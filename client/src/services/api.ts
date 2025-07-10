@@ -1,107 +1,140 @@
 import { User, Seat, Settings } from '../types';
 
-// Mock API service - replace with actual backend calls
 class ApiService {
-  private baseUrl = 'https://your-backend-url.replit.app/api';
+  private baseUrl = '/api'; // Use relative path for same-origin requests
+
+  private async makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Network error' }));
+      throw new Error(error.message || 'Request failed');
+    }
+
+    return response;
+  }
 
   async registerUser(userData: Omit<User, 'id' | 'logs'>): Promise<User> {
-    // Mock implementation
-    const newUser: User = {
-      ...userData,
-      id: Date.now().toString(),
-      logs: [{
-        id: Date.now().toString(),
-        action: 'User registered',
-        timestamp: new Date().toISOString()
-      }]
-    };
+    const response = await this.makeRequest(`${this.baseUrl}/users`, {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return newUser;
+    return response.json();
   }
 
   async loginAdmin(username: string, password: string): Promise<boolean> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return username === 'Vidhyadham' && password === '9012vidhya09';
+    try {
+      const response = await this.makeRequest(`${this.baseUrl}/admin/login`, {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+      
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      return false;
+    }
   }
 
   async getUsers(): Promise<User[]> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return [];
+    const response = await this.makeRequest(`${this.baseUrl}/users`);
+    return response.json();
   }
 
   async updateUser(user: User): Promise<User> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return user;
+    const response = await this.makeRequest(`${this.baseUrl}/users/${user.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(user),
+    });
+    
+    return response.json();
   }
 
   async deleteUser(userId: string): Promise<void> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await this.makeRequest(`${this.baseUrl}/users/${userId}`, {
+      method: 'DELETE',
+    });
   }
 
   async getSeats(): Promise<Seat[]> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return Array.from({ length: 114 }, (_, i) => ({
-      number: i + 1,
-      status: 'available'
-    }));
+    const response = await this.makeRequest(`${this.baseUrl}/seats`);
+    return response.json();
   }
 
   async updateSeat(seat: Seat): Promise<Seat> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return seat;
+    const response = await this.makeRequest(`${this.baseUrl}/seats/${seat.number}`, {
+      method: 'PUT',
+      body: JSON.stringify(seat),
+    });
+    
+    return response.json();
   }
 
   async getSettings(): Promise<Settings> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return {
-      slotPricing: {
-        'Morning': 1000,
-        'Afternoon': 1200,
-        'Evening': 1500
-      },
-      gmail: 'upwebmonitor@gmail.com',
-      appPassword: 'zfjthyhndoayvgwd',
-      telegramChatIds: []
-    };
+    const response = await this.makeRequest(`${this.baseUrl}/settings`);
+    return response.json();
   }
 
   async updateSettings(settings: Settings): Promise<Settings> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return settings;
+    const response = await this.makeRequest(`${this.baseUrl}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    
+    return response.json();
   }
 
   async downloadCsv(): Promise<Blob> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return new Blob(['mock csv data'], { type: 'text/csv' });
+    const response = await fetch(`${this.baseUrl}/export/csv`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to download CSV');
+    }
+    
+    return response.blob();
   }
 
   async downloadPdf(): Promise<Blob> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    return new Blob(['mock pdf data'], { type: 'application/pdf' });
+    const response = await fetch(`${this.baseUrl}/export/pdf`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to download PDF');
+    }
+    
+    return response.blob();
   }
 
   async testEmail(): Promise<boolean> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return true;
+    try {
+      const response = await this.makeRequest(`${this.baseUrl}/test/email`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      return false;
+    }
   }
 
   async testTelegram(): Promise<boolean> {
-    // Mock implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return true;
+    try {
+      const response = await this.makeRequest(`${this.baseUrl}/test/telegram`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      return false;
+    }
   }
 }
 
