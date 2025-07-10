@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   phone: text("phone").notNull(),
+  address: text("address").notNull(),
   seatNumber: integer("seat_number").notNull(),
   slot: text("slot").notNull(),
   feeStatus: text("fee_status").notNull().default("due"), // 'paid' | 'due' | 'expired'
@@ -58,6 +59,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
   name: true,
   email: true,
   phone: true,
+  address: true,
   seatNumber: true,
   slot: true,
   feeStatus: true,

@@ -13,6 +13,7 @@ export function UserRegistration() {
     name: '',
     email: '',
     phone: '',
+    address: '',
     seatNumber: '',
     slot: '',
     idType: '',
@@ -52,6 +53,7 @@ export function UserRegistration() {
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.email.trim()) newErrors.email = 'Email is required';
     if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
+    if (!formData.address.trim()) newErrors.address = 'Address is required';
     if (!formData.seatNumber) newErrors.seatNumber = 'Seat selection is required';
     if (!formData.slot) newErrors.slot = 'Slot selection is required';
     
@@ -82,6 +84,7 @@ export function UserRegistration() {
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
+        address: formData.address,
         seatNumber: parseInt(formData.seatNumber),
         slot: formData.slot,
         feeStatus: 'due' as const,
@@ -107,6 +110,7 @@ export function UserRegistration() {
         name: '',
         email: '',
         phone: '',
+        address: '',
         seatNumber: '',
         slot: '',
         idType: '',
@@ -190,6 +194,18 @@ export function UserRegistration() {
                     onChange={handleInputChange}
                     error={errors.phone}
                     placeholder="Enter phone number"
+                    required
+                  />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <Input
+                    label="Address"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    error={errors.address}
+                    placeholder="Enter complete address"
                     required
                   />
                 </div>
@@ -316,6 +332,7 @@ export function UserRegistration() {
                     name: '',
                     email: '',
                     phone: '',
+                    address: '',
                     seatNumber: '',
                     slot: '',
                     idType: '',

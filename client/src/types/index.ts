@@ -3,6 +3,7 @@ export interface User {
   name: string;
   email: string;
   phone: string;
+  address: string;
   seatNumber: number;
   slot: string;
   feeStatus: 'paid' | 'due' | 'expired';
