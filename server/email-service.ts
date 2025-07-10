@@ -48,6 +48,9 @@ export class EmailService {
         user: smtpConfig.auth.user,
         pass: smtpConfig.auth.pass,
       },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
   }
 
@@ -188,25 +191,44 @@ export class EmailService {
     }
   }
 
-  // Helper method to create Gmail configuration
+  // Helper method to create Gmail configuration with app password
   static createGmailConfig(email: string, appPassword: string): SMTPConfig {
     return {
       host: 'smtp.gmail.com',
       port: 587,
-      secure: false,
+      secure: false, // Use STARTTLS
       auth: {
         user: email,
-        pass: appPassword
+        pass: appPassword  // This should be Gmail App Password, not regular password
       }
     };
   }
 
-  // Helper method to create Outlook configuration
+  // Helper method to create Outlook/Hotmail configuration
   static createOutlookConfig(email: string, password: string): SMTPConfig {
     return {
       host: 'smtp-mail.outlook.com',
       port: 587,
-      secure: false,
+      secure: false, // Use STARTTLS
+      auth: {
+        user: email,
+        pass: password
+      }
+    };
+  }
+
+  // Helper method to create custom SMTP configuration
+  static createCustomConfig(
+    host: string, 
+    port: number, 
+    secure: boolean, 
+    email: string, 
+    password: string
+  ): SMTPConfig {
+    return {
+      host,
+      port,
+      secure,
       auth: {
         user: email,
         pass: password

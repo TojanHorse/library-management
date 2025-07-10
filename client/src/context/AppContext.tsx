@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { User, Seat, Settings, Theme } from '../types';
+import { defaultSettings } from '../utils/defaultSettings';
+import { apiService } from '../services/api';
+import { normalizeUser, prepareUserForApi, normalizeSettings } from '../utils/apiHelpers';
 
 interface AppState {
   users: User[];
@@ -25,76 +28,14 @@ type AppAction =
   | { type: 'UPDATE_SEAT'; payload: Seat };
 
 const initialState: AppState = {
-  users: [
-    {
-      id: '1',
-      name: 'Rajesh Kumar',
-      email: 'rajesh@example.com',
-      phone: '+91 9876543210',
-      seatNumber: 15,
-      slot: 'Morning',
-      feeStatus: 'paid',
-      registrationDate: '2024-01-15T10:30:00Z',
-      logs: [
-        { id: '1', action: 'User registered', timestamp: '2024-01-15T10:30:00Z' },
-        { id: '2', action: 'Fee marked as paid', timestamp: '2024-01-16T14:20:00Z', adminId: 'admin' }
-      ]
-    },
-    {
-      id: '2',
-      name: 'Priya Sharma',
-      email: 'priya@example.com',
-      phone: '+91 9876543211',
-      seatNumber: 23,
-      slot: 'Afternoon',
-      feeStatus: 'due',
-      registrationDate: '2024-01-20T09:15:00Z',
-      logs: [
-        { id: '3', action: 'User registered', timestamp: '2024-01-20T09:15:00Z' }
-      ]
-    },
-    {
-      id: '3',
-      name: 'Amit Patel',
-      email: 'amit@example.com',
-      phone: '+91 9876543212',
-      seatNumber: 7,
-      slot: 'Evening',
-      feeStatus: 'expired',
-      registrationDate: '2024-01-10T16:45:00Z',
-      logs: [
-        { id: '4', action: 'User registered', timestamp: '2024-01-10T16:45:00Z' },
-        { id: '5', action: 'Fee status changed to expired', timestamp: '2024-01-25T00:00:00Z' }
-      ]
-    }
-  ],
-  seats: Array.from({ length: 114 }, (_, i) => {
-    const number = i + 1;
-    if (number === 15) return { number, status: 'paid' as const, userId: '1' };
-    if (number === 23) return { number, status: 'due' as const, userId: '2' };
-    if (number === 7) return { number, status: 'expired' as const, userId: '3' };
-    return { number, status: 'available' as const };
-  }),
-  settings: {
-    slotPricing: {
-      'Morning': 1000,
-      'Afternoon': 1200,
-      'Evening': 1500
-    },
-    gmail: 'upwebmonitor@gmail.com',
-    appPassword: 'zfjthyhndoayvgwd',
-    telegramChatIds: []
-  },
+  users: [],
+  seats: [],
+  settings: defaultSettings,
   currentAdmin: null,
-  loading: false,
+  loading: true,
   theme: 'light',
   isAuthenticated: false
 };
-
-const AppContext = createContext<{
-  state: AppState;
-  dispatch: React.Dispatch<AppAction>;
-} | null>(null);
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -138,36 +79,148 @@ function appReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
+interface AppContextType {
+  state: AppState;
+  dispatch: React.Dispatch<AppAction>;
+  // API methods
+  loadData: () => Promise<void>;
+  loginAdmin: (username: string, password: string) => Promise<boolean>;
+  registerUser: (userData: Omit<User, 'id' | 'logs'>) => Promise<User>;
+  updateUser: (user: User) => Promise<User>;
+  deleteUser: (userId: string) => Promise<void>;
+  updateSettings: (settings: Settings) => Promise<Settings>;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  useEffect(() => {
-    // Apply theme to document
-    if (state.theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [state.theme]);
+  // Load initial data from API
+  const loadData = async () => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      
+      // Load users, seats, and settings in parallel
+      const [users, seats, settings] = await Promise.all([
+        apiService.getUsers(),
+        apiService.getSeats(),
+        apiService.getSettings()
+      ]);
 
-  useEffect(() => {
-    // Load theme from localStorage
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme) {
-      dispatch({ type: 'SET_THEME', payload: savedTheme });
+      // Normalize data from API
+      const normalizedUsers = users.map(normalizeUser);
+      const normalizedSettings = normalizeSettings(settings);
+
+      dispatch({ type: 'SET_USERS', payload: normalizedUsers });
+      dispatch({ type: 'SET_SEATS', payload: seats });
+      dispatch({ type: 'SET_SETTINGS', payload: normalizedSettings });
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, []);
+  };
+
+  // API methods
+  const loginAdmin = async (username: string, password: string): Promise<boolean> => {
+    try {
+      const success = await apiService.loginAdmin(username, password);
+      if (success) {
+        dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+        dispatch({ type: 'SET_CURRENT_ADMIN', payload: username });
+        await loadData(); // Load data after successful login
+      }
+      return success;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
+    }
+  };
+
+  const registerUser = async (userData: Omit<User, 'id' | '_id' | 'logs'>): Promise<User> => {
+    try {
+      const apiData = prepareUserForApi(userData);
+      const newUser = await apiService.registerUser(apiData);
+      const normalizedUser = normalizeUser(newUser);
+      
+      dispatch({ type: 'ADD_USER', payload: normalizedUser });
+      
+      // Update seat status
+      const updatedSeat = { 
+        number: normalizedUser.seatNumber, 
+        status: normalizedUser.feeStatus as any, 
+        userId: normalizedUser._id || normalizedUser.id
+      };
+      dispatch({ type: 'UPDATE_SEAT', payload: updatedSeat });
+      
+      return normalizedUser;
+    } catch (error) {
+      console.error('Failed to register user:', error);
+      throw error;
+    }
+  };
+
+  const updateUser = async (user: User): Promise<User> => {
+    try {
+      const updatedUser = await apiService.updateUser(user);
+      dispatch({ type: 'UPDATE_USER', payload: updatedUser });
+      return updatedUser;
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      throw error;
+    }
+  };
+
+  const deleteUser = async (userId: string): Promise<void> => {
+    try {
+      await apiService.deleteUser(userId);
+      dispatch({ type: 'DELETE_USER', payload: userId });
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+      throw error;
+    }
+  };
+
+  const updateSettings = async (settings: Settings): Promise<Settings> => {
+    try {
+      const updatedSettings = await apiService.updateSettings(settings);
+      dispatch({ type: 'SET_SETTINGS', payload: updatedSettings });
+      return updatedSettings;
+    } catch (error) {
+      console.error('Failed to update settings:', error);
+      throw error;
+    }
+  };
+
+  // Load data on mount if authenticated
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      loadData();
+    }
+  }, [state.isAuthenticated]);
+
+  const value: AppContextType = {
+    state,
+    dispatch,
+    loadData,
+    loginAdmin,
+    registerUser,
+    updateUser,
+    deleteUser,
+    updateSettings
+  };
 
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );
 }
 
-export function useApp() {
+export function useApp(): AppContextType {
   const context = useContext(AppContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useApp must be used within an AppProvider');
   }
   return context;

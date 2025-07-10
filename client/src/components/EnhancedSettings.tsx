@@ -4,6 +4,7 @@ import { Input } from './ui/Input';
 import { Card } from './ui/Card';
 import { Header } from './layout/Header';
 import { Modal } from './ui/Modal';
+import { EmailConfigPanel } from './EmailConfigPanel';
 import { 
   Settings as SettingsIcon, 
   Mail, 
@@ -19,13 +20,16 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { apiService } from '../services/api';
+import { useToast } from './ui/Toast';
 
 export function EnhancedSettings() {
   const { state, dispatch } = useApp();
+  const { toast } = useToast();
   const [formData, setFormData] = useState(state.settings);
   const [loading, setLoading] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState<'welcome' | 'dueDate'>('welcome');
   const [newAdmin, setNewAdmin] = useState({ username: '', password: '' });
   const [testResults, setTestResults] = useState<{
@@ -52,10 +56,10 @@ export function EnhancedSettings() {
     try {
       const updatedSettings = await apiService.updateSettings(formData);
       dispatch({ type: 'SET_SETTINGS', payload: updatedSettings });
-      alert('Settings saved successfully!');
+      toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Failed to save settings. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -66,10 +70,14 @@ export function EnhancedSettings() {
     try {
       const success = await apiService.testEmail();
       setTestResults(prev => ({ ...prev, email: success }));
-      alert(success ? 'Email test successful!' : 'Email test failed!');
+      if (success) {
+        toast.success('Email test successful!');
+      } else {
+        toast.error('Email test failed!');
+      }
     } catch (error) {
       setTestResults(prev => ({ ...prev, email: false }));
-      alert('Email test failed!');
+      toast.error('Email test failed!');
     } finally {
       setLoading(false);
     }
@@ -80,10 +88,14 @@ export function EnhancedSettings() {
     try {
       const success = await apiService.testTelegram();
       setTestResults(prev => ({ ...prev, telegram: success }));
-      alert(success ? 'Telegram test successful!' : 'Telegram test failed!');
+      if (success) {
+        toast.success('Telegram test successful!');
+      } else {
+        toast.error('Telegram test failed!');
+      }
     } catch (error) {
       setTestResults(prev => ({ ...prev, telegram: false }));
-      alert('Telegram test failed!');
+      toast.error('Telegram test failed!');
     } finally {
       setLoading(false);
     }
@@ -91,17 +103,17 @@ export function EnhancedSettings() {
 
   const handleAddAdmin = async () => {
     if (!newAdmin.username.trim() || !newAdmin.password.trim()) {
-      alert('Please fill in all fields');
+      toast.warning('Please fill in all fields');
       return;
     }
 
     try {
       await apiService.createAdmin(newAdmin);
-      alert(`Admin "${newAdmin.username}" added successfully!`);
+      toast.success(`Admin "${newAdmin.username}" added successfully!`);
       setNewAdmin({ username: '', password: '' });
       setShowAddAdminModal(false);
     } catch (error) {
-      alert('Failed to add admin: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed to add admin: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -130,8 +142,8 @@ export function EnhancedSettings() {
       dueDate: '2024-02-12'
     };
 
-    return templateContent.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-      return sampleData[key as keyof typeof sampleData] || match;
+    return templateContent.replace(/\{\{(\w+)\}\}/g, (match: string, key: string) => {
+      return String(sampleData[key as keyof typeof sampleData] || match);
     });
   };
 
@@ -158,7 +170,7 @@ export function EnhancedSettings() {
                     </label>
                     <input
                       type="text"
-                      value={timing}
+                      value={timing as string}
                       onChange={(e) => handleSlotTimingChange(slot, e.target.value)}
                       placeholder="e.g., 6:00 AM - 12:00 PM"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -216,7 +228,10 @@ export function EnhancedSettings() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => alert(previewTemplate('welcome'))}
+                    onClick={() => {
+                      setCurrentTemplate('welcome');
+                      setShowPreviewModal(true);
+                    }}
                   >
                     <Eye className="h-4 w-4 mr-1" />
                     Preview
@@ -241,7 +256,10 @@ export function EnhancedSettings() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => alert(previewTemplate('dueDate'))}
+                    onClick={() => {
+                      setCurrentTemplate('dueDate');
+                      setShowPreviewModal(true);
+                    }}
                   >
                     <Eye className="h-4 w-4 mr-1" />
                     Preview
@@ -417,7 +435,7 @@ export function EnhancedSettings() {
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => alert(previewTemplate(currentTemplate))}
+              onClick={() => setShowPreviewModal(true)}
             >
               Preview
             </Button>
@@ -427,6 +445,33 @@ export function EnhancedSettings() {
           </div>
         </div>
       </Modal>
+
+      {/* Email Template Preview Modal */}
+      <Modal
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        title={`Preview ${currentTemplate === 'welcome' ? 'Welcome' : 'Due Date'} Email Template`}
+        size="xl"
+      >
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+            <div 
+              className="prose prose-sm max-w-none dark:prose-invert"
+              dangerouslySetInnerHTML={{ __html: previewTemplate(currentTemplate) }}
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button onClick={() => setShowPreviewModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Email Configuration Section */}
+      <div className="mt-6">
+        <EmailConfigPanel />
+      </div>
     </div>
   );
 }

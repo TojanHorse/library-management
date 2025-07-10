@@ -41,17 +41,24 @@ export const admins = pgTable("admins", {
   password: text("password").notNull(),
 });
 
-// Settings table
+// Settings table - DEPRECATED for PostgreSQL, keeping for client compatibility
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   slotPricing: json("slot_pricing").notNull(),
   slotTimings: json("slot_timings").notNull(),
-  gmail: text("gmail").notNull(),
-  appPassword: text("app_password").notNull(),
+  emailProvider: text("email_provider").notNull().default("gmail"), // 'gmail', 'outlook', 'custom'
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpSecure: boolean("smtp_secure"),
+  emailUser: text("email_user").notNull(),
+  emailPassword: text("email_password").notNull(),
   telegramChatIds: json("telegram_chat_ids").notNull(),
   welcomeEmailTemplate: text("welcome_email_template").notNull(),
   dueDateEmailTemplate: text("due_date_email_template").notNull(),
-  sendgridApiKey: text("sendgrid_api_key"),
+  // Added fields for MongoDB compatibility
+  cloudinaryCloudName: text("cloudinary_cloud_name"),
+  cloudinaryApiKey: text("cloudinary_api_key"),
+  cloudinaryApiSecret: text("cloudinary_api_secret"),
 });
 
 // Insert schemas
@@ -82,12 +89,18 @@ export const insertAdminSchema = createInsertSchema(admins).pick({
 export const insertSettingsSchema = createInsertSchema(settings).pick({
   slotPricing: true,
   slotTimings: true,
-  gmail: true,
-  appPassword: true,
+  emailProvider: true,
+  smtpHost: true,
+  smtpPort: true,
+  smtpSecure: true,
+  emailUser: true,
+  emailPassword: true,
   telegramChatIds: true,
   welcomeEmailTemplate: true,
   dueDateEmailTemplate: true,
-  sendgridApiKey: true,
+  cloudinaryCloudName: true,
+  cloudinaryApiKey: true,
+  cloudinaryApiSecret: true,
 });
 
 export const insertUserLogSchema = createInsertSchema(userLogs).pick({

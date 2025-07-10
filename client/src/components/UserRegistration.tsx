@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext';
 import { apiService } from '../services/api';
 
 export function UserRegistration() {
-  const { state, dispatch } = useApp();
+  const { state, registerUser } = useApp();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -94,16 +94,7 @@ export function UserRegistration() {
         idUpload: formData.idUpload || undefined
       };
 
-      const newUser = await apiService.registerUser(userData);
-      dispatch({ type: 'ADD_USER', payload: newUser });
-      
-      // Update seat status
-      const updatedSeat = {
-        number: parseInt(formData.seatNumber),
-        status: 'due' as const,
-        userId: newUser.id
-      };
-      dispatch({ type: 'UPDATE_SEAT', payload: updatedSeat });
+      await registerUser(userData);
 
       setSuccess(true);
       setFormData({

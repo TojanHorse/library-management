@@ -6,9 +6,11 @@ import { Header } from './layout/Header';
 import { Card } from './ui/Card';
 import { Plus, Minus, Grid3x3, Settings, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useToast } from './ui/Toast';
 
 export function SeatManager() {
   const { state, dispatch } = useApp();
+  const { toast, confirm } = useToast();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkAddModal, setShowBulkAddModal] = useState(false);
   const [newSeatNumber, setNewSeatNumber] = useState('');
@@ -23,12 +25,12 @@ export function SeatManager() {
     
     const seatNumber = parseInt(newSeatNumber);
     if (isNaN(seatNumber) || seatNumber <= 0) {
-      alert('Please enter a valid seat number');
+      toast.warning('Please enter a valid seat number');
       return;
     }
     
     if (state.seats.find(s => s.number === seatNumber)) {
-      alert('Seat number already exists!');
+      toast.error('Seat number already exists!');
       return;
     }
 
@@ -42,6 +44,7 @@ export function SeatManager() {
     setNewSeatNumber('');
     setShowAddModal(false);
     setLoading(false);
+    toast.success(`Seat #${seatNumber} added successfully`);
   };
 
   const handleBulkAdd = async () => {
@@ -49,12 +52,12 @@ export function SeatManager() {
     const end = parseInt(bulkAddData.endNumber);
     
     if (isNaN(start) || isNaN(end) || start <= 0 || end <= 0 || start > end) {
-      alert('Please enter valid seat number range');
+      toast.warning('Please enter valid seat number range');
       return;
     }
 
     if (end - start > 50) {
-      alert('Cannot add more than 50 seats at once');
+      toast.warning('Cannot add more than 50 seats at once');
       return;
     }
 
@@ -80,7 +83,11 @@ export function SeatManager() {
     if (!seat) return;
 
     if (seat.status !== 'available') {
-      if (!window.confirm('This seat is occupied. Are you sure you want to remove it? This will also remove the user assignment.')) {
+      const confirmed = await confirm(
+        'This seat is occupied. Are you sure you want to remove it?', 
+        'This will also remove the user assignment.'
+      );
+      if (!confirmed) {
         return;
       }
       
@@ -92,6 +99,7 @@ export function SeatManager() {
 
     const updatedSeats = state.seats.filter(s => s.number !== seatNumber);
     dispatch({ type: 'SET_SEATS', payload: updatedSeats });
+    toast.success(`Seat #${seatNumber} removed successfully`);
   };
 
   const getSeatColor = (seat: any) => {

@@ -90,7 +90,7 @@ export function StatsCards() {
                   </span>
                 </div>
               </div>
-              <div className={`p-3 rounded-xl ${colorClasses[stat.color]} flex-shrink-0`}>
+              <div className={`p-3 rounded-xl ${colorClasses[stat.color as keyof typeof colorClasses]} flex-shrink-0`}>
                 <Icon className="h-6 w-6" />
               </div>
             </div>

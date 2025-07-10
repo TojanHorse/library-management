@@ -7,9 +7,11 @@ import { Modal } from './ui/Modal';
 import { Settings as SettingsIcon, Mail, MessageSquare, TestTube, UserPlus, Shield } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { apiService } from '../services/api';
+import { useToast } from './ui/Toast';
 
 export function Settings() {
   const { state, dispatch } = useApp();
+  const { toast } = useToast();
   const [formData, setFormData] = useState(state.settings);
   const [loading, setLoading] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
@@ -24,10 +26,10 @@ export function Settings() {
     try {
       const updatedSettings = await apiService.updateSettings(formData);
       dispatch({ type: 'SET_SETTINGS', payload: updatedSettings });
-      alert('Settings saved successfully!');
+      toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Failed to save settings. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -38,10 +40,14 @@ export function Settings() {
     try {
       const success = await apiService.testEmail();
       setTestResults(prev => ({ ...prev, email: success }));
-      alert(success ? 'Email test successful!' : 'Email test failed!');
+      if (success) {
+        toast.success('Email test successful!');
+      } else {
+        toast.error('Email test failed!');
+      }
     } catch (error) {
       setTestResults(prev => ({ ...prev, email: false }));
-      alert('Email test failed!');
+      toast.error('Email test failed!');
     } finally {
       setLoading(false);
     }
@@ -52,10 +58,14 @@ export function Settings() {
     try {
       const success = await apiService.testTelegram();
       setTestResults(prev => ({ ...prev, telegram: success }));
-      alert(success ? 'Telegram test successful!' : 'Telegram test failed!');
+      if (success) {
+        toast.success('Telegram test successful!');
+      } else {
+        toast.error('Telegram test failed!');
+      }
     } catch (error) {
       setTestResults(prev => ({ ...prev, telegram: false }));
-      alert('Telegram test failed!');
+      toast.error('Telegram test failed!');
     } finally {
       setLoading(false);
     }
@@ -63,17 +73,17 @@ export function Settings() {
 
   const handleAddAdmin = async () => {
     if (!newAdmin.username.trim() || !newAdmin.password.trim()) {
-      alert('Please fill in all fields');
+      toast.warning('Please fill in all fields');
       return;
     }
 
     try {
       // In a real app, this would call the backend
-      alert(`Admin "${newAdmin.username}" added successfully!`);
+      toast.success(`Admin "${newAdmin.username}" added successfully!`);
       setNewAdmin({ username: '', password: '' });
       setShowAddAdminModal(false);
     } catch (error) {
-      alert('Failed to add admin');
+      toast.error('Failed to add admin');
     }
   };
 

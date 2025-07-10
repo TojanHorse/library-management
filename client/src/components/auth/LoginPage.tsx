@@ -8,7 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { apiService } from '../../services/api';
 
 export function LoginPage() {
-  const { dispatch } = useApp();
+  const { loginAdmin } = useApp();
   const [credentials, setCredentials] = useState({
     username: '',
     password: ''
@@ -22,14 +22,12 @@ export function LoginPage() {
     setError('');
 
     try {
-      const success = await apiService.loginAdmin(credentials.username, credentials.password);
+      const success = await loginAdmin(credentials.username, credentials.password);
       
-      if (success) {
-        dispatch({ type: 'SET_CURRENT_ADMIN', payload: credentials.username });
-        dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-      } else {
+      if (!success) {
         setError('Invalid username or password');
       }
+      // If success is true, the context will handle authentication state
     } catch (err) {
       setError('Login failed. Please try again.');
     } finally {
@@ -113,7 +111,7 @@ export function LoginPage() {
               <p className="mb-1">Default credentials:</p>
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 font-mono text-xs">
                 <p>Username: <span className="text-blue-600 dark:text-blue-400">Vidhyadham</span></p>
-                <p>Password: <span className="text-blue-600 dark:text-blue-400">9012vidhya09</span></p>
+                <p>Password: <span className="text-blue-600 dark:text-blue-400">admin123</span></p>
               </div>
             </div>
           </div>

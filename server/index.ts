@@ -1,6 +1,11 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { dueDateScheduler } from "./scheduler";
+import { emailService, EmailService } from "./email-service";
+import { database } from "./database";
+import { cloudinaryService } from "./cloudinary";
 
 const app = express();
 app.use(express.json());
@@ -37,6 +42,22 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Connect to MongoDB
+  try {
+    await database.connect();
+    log('Database connected successfully');
+  } catch (error) {
+    log('Database connection failed:', error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  // Initialize Cloudinary
+  if (cloudinaryService.isReady()) {
+    log('Cloudinary configured and ready');
+  } else {
+    log('Warning: Cloudinary not configured. File uploads will not work.');
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -60,11 +81,36 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  server.listen(port, () => {
     log(`serving on port ${port}`);
+    
+    // Initialize email service with environment variables
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPassword = process.env.GMAIL_PASSWORD;
+    
+    if (gmailUser && gmailPassword) {
+      const smtpConfig = EmailService.createGmailConfig(gmailUser, gmailPassword);
+      emailService.configure(smtpConfig, gmailUser);
+      log(`Email service configured for: ${gmailUser}`);
+    } else {
+      log('Warning: Gmail credentials not found in environment variables');
+      log('Please set GMAIL_USER and GMAIL_PASSWORD in .env file');
+    }
+    
+    // Start the due date reminder scheduler
+    dueDateScheduler.start();
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    dueDateScheduler.stop();
+    await database.disconnect();
+    server.close();
+  });
+
+  process.on('SIGINT', async () => {
+    dueDateScheduler.stop();
+    await database.disconnect();
+    server.close();
   });
 })();

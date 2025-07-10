@@ -4,15 +4,19 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
-import { Edit, Trash2, Eye, Filter, Download, Search } from 'lucide-react';
+import { Edit, Trash2, Eye, Filter, Download, Search, Mail } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
+import { useToast } from '../ui/Toast';
 
 export function UserManagement() {
-  const { state, dispatch } = useApp();
+  const { state, updateUser, deleteUser, dispatch } = useApp();
+  const { toast, confirm } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sendingEmails, setSendingEmails] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({
     slot: '',
     feeStatus: '',
@@ -29,39 +33,76 @@ export function UserManagement() {
     return matchesSlot && matchesStatus && matchesSearch;
   });
 
-  const handleMarkPaid = (userId: string) => {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
+  const handleMarkPaid = async (userId: string) => {
+    setLoading(true);
+    try {
+      const user = state.users.find(u => (u._id || u.id) === userId);
+      if (!user) return;
 
-    const updatedUser = {
-      ...user,
-      feeStatus: 'paid' as const,
-      logs: [...user.logs, {
-        id: Date.now().toString(),
-        action: 'Fee marked as paid',
-        timestamp: new Date().toISOString(),
-        adminId: state.currentAdmin || 'admin'
-      }]
-    };
+      const updatedUser = {
+        ...user,
+        feeStatus: 'paid' as const,
+        logs: [...user.logs, {
+          id: Date.now().toString(),
+          action: 'Fee marked as paid',
+          timestamp: new Date().toISOString(),
+          adminId: state.currentAdmin || 'admin'
+        }]
+      };
 
-    dispatch({ type: 'UPDATE_USER', payload: updatedUser });
-    
-    const seat = state.seats.find(s => s.number === user.seatNumber);
-    if (seat) {
-      dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'paid' } });
+      await updateUser(updatedUser);
+    } catch (error) {
+      console.error('Failed to mark as paid:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteUser = (userId: string) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      const user = state.users.find(u => u.id === userId);
-      if (user) {
-        const seat = state.seats.find(s => s.number === user.seatNumber);
-        if (seat) {
-          dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'available', userId: undefined } });
-        }
+  const handleDeleteUser = async (userId: string) => {
+    const confirmed = await confirm('Are you sure you want to delete this user?', 'This action cannot be undone.');
+    if (confirmed) {
+      try {
+        setLoading(true);
+        await deleteUser(userId);
+        toast.success('User deleted successfully');
+      } catch (error) {
+        console.error('Failed to delete user:', error);
+        toast.error('Failed to delete user');
+      } finally {
+        setLoading(false);
       }
-      dispatch({ type: 'DELETE_USER', payload: userId });
+    }
+  };
+
+  const handleSendDueReminder = async (userId: string) => {
+    setSendingEmails(prev => new Set(prev).add(userId));
+    try {
+      const response = await fetch(`/api/send-due-reminder/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ adminId: state.currentAdmin || 'admin' }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('Due date reminder sent successfully!');
+        // Reload data to get updated logs from server
+        window.location.reload();
+      } else {
+        toast.error(`Failed to send reminder: ${data.message}`);
+      }
+    } catch (error) {
+      console.error('Due reminder error:', error);
+      toast.error('Failed to send due date reminder');
+    } finally {
+      setSendingEmails(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
     }
   };
 
@@ -160,7 +201,7 @@ export function UserManagement() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredUsers.map(user => (
-                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <tr key={user._id || user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -207,15 +248,27 @@ export function UserManagement() {
                           {user.feeStatus !== 'paid' && (
                             <Button
                               size="sm"
-                              onClick={() => handleMarkPaid(user.id)}
+                              onClick={() => handleMarkPaid(user._id || user.id || '')}
+                              disabled={loading}
                             >
-                              Mark Paid
+                              {loading ? 'Processing...' : 'Mark Paid'}
+                            </Button>
+                          )}
+                          {(user.feeStatus === 'due' || user.feeStatus === 'expired') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSendDueReminder(user._id || user.id || '')}
+                              disabled={sendingEmails.has(user._id || user.id || '')}
+                            >
+                              {sendingEmails.has(user._id || user.id || '') ? 
+                                'Sending...' : <Mail className="h-4 w-4" />}
                             </Button>
                           )}
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={() => handleDeleteUser(user._id || user.id || '')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -230,7 +283,7 @@ export function UserManagement() {
             {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
               {filteredUsers.map(user => (
-                <Card key={user.id} padding="sm">
+                <Card key={user._id || user.id} padding="sm">
                   <div className="space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
@@ -271,20 +324,38 @@ export function UserManagement() {
                       </Button>
                       {user.feeStatus !== 'paid' && (
                         <Button
-                          size="sm"
-                          onClick={() => handleMarkPaid(user.id)}
-                        >
-                          Mark Paid
-                        </Button>
-                      )}
-                      <Button
                         size="sm"
-                        variant="danger"
-                        onClick={() => handleDeleteUser(user.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Delete
-                      </Button>
+                        onClick={() => handleMarkPaid(user._id || user.id || '')}
+                        disabled={loading}
+                        >
+                        {loading ? 'Processing...' : 'Mark Paid'}
+                        </Button>
+                        )}
+                        {(user.feeStatus === 'due' || user.feeStatus === 'expired') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                            onClick={() => handleSendDueReminder(user._id || user.id || '')}
+                          disabled={sendingEmails.has(user._id || user.id || '')}
+                        >
+                          {sendingEmails.has(user._id || user.id || '') ? (
+                            'Sending...'
+                          ) : (
+                            <>
+                              <Mail className="h-4 w-4 mr-1" />
+                              Remind
+                            </>
+                          )}
+                         </Button>
+                       )}
+                       <Button
+                         size="sm"
+                         variant="danger"
+                         onClick={() => handleDeleteUser(user._id || user.id || '')}
+                       >
+                         <Trash2 className="h-4 w-4 mr-1" />
+                         Delete
+                       </Button>
                     </div>
                   </div>
                 </Card>
@@ -354,18 +425,25 @@ function EditUserForm({ user, onSave, onCancel }: {
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState(user);
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      ...formData,
-      logs: [...formData.logs, {
-        id: Date.now().toString(),
-        action: 'User details updated',
-        timestamp: new Date().toISOString(),
-        adminId: 'admin'
-      }]
-    });
+    setSaving(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+      onSave({
+        ...formData,
+        logs: [...formData.logs, {
+          id: Date.now().toString(),
+          action: 'User details updated',
+          timestamp: new Date().toISOString(),
+          adminId: 'admin'
+        }]
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -410,8 +488,12 @@ function EditUserForm({ user, onSave, onCancel }: {
         </select>
       </div>
       <div className="flex flex-col sm:flex-row gap-2 pt-4">
-        <Button type="submit" className="flex-1">Save Changes</Button>
-        <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
+        <Button type="submit" className="flex-1" disabled={saving}>
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1" disabled={saving}>
+          Cancel
+        </Button>
       </div>
     </form>
   );

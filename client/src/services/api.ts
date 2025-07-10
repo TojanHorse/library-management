@@ -49,7 +49,8 @@ class ApiService {
   }
 
   async updateUser(user: User): Promise<User> {
-    const response = await this.makeRequest(`${this.baseUrl}/users/${user.id}`, {
+    const userId = user._id || user.id;
+    const response = await this.makeRequest(`${this.baseUrl}/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(user),
     });

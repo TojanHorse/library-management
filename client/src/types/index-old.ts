@@ -36,7 +36,6 @@ export interface Admin {
 
 export interface Settings {
   id?: number;
-  _id?: string; // MongoDB ObjectId
   slotPricing: Record<string, number>;
   slotTimings: Record<string, string>;
   emailProvider: 'gmail' | 'outlook' | 'custom';
@@ -48,14 +47,6 @@ export interface Settings {
   telegramChatIds: string[];
   welcomeEmailTemplate: string;
   dueDateEmailTemplate: string;
-  // New MongoDB fields
-  cloudinaryCloudName?: string;
-  cloudinaryApiKey?: string;
-  cloudinaryApiSecret?: string;
-  // Legacy fields for backwards compatibility
-  gmail?: string;
-  appPassword?: string;
-  sendgridApiKey?: string;
 }
 
 export type Theme = 'light' | 'dark';

@@ -6,9 +6,11 @@ import { Edit, Trash2, Eye, Filter, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { User } from '../types';
 import { apiService } from '../services/api';
+import { useToast } from './ui/Toast';
 
 export function AdminDashboard() {
   const { state, dispatch } = useApp();
+  const { toast, confirm } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -54,7 +56,8 @@ export function AdminDashboard() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
+    const confirmed = await confirm('Are you sure you want to delete this user?', 'This action cannot be undone.');
+    if (confirmed) {
       const user = state.users.find(u => u.id === userId);
       if (user) {
         // Free up the seat
@@ -65,6 +68,7 @@ export function AdminDashboard() {
       }
       
       dispatch({ type: 'DELETE_USER', payload: userId });
+      toast.success('User deleted successfully');
     }
   };
 
@@ -248,7 +252,7 @@ export function AdminDashboard() {
                     {user.feeStatus !== 'paid' && (
                       <Button
                         size="sm"
-                        onClick={() => handleMarkPaid(user.id)}
+                        onClick={() => handleMarkPaid(user._id || user.id || '')}
                       >
                         Mark Paid
                       </Button>
@@ -256,7 +260,7 @@ export function AdminDashboard() {
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => handleDeleteUser(user.id)}
+                      onClick={() => handleDeleteUser(user._id || user.id || '')}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
