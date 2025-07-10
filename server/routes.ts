@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSeatSchema, insertSettingsSchema, insertUserLogSchema } from "@shared/schema";
+import { insertUserSchema, insertSeatSchema, insertSettingsSchema, insertUserLogSchema, insertAdminSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -22,6 +22,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true, adminId: admin.id });
     } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin", async (req, res) => {
+    try {
+      const adminData = insertAdminSchema.parse(req.body);
+      
+      // Check if admin already exists
+      const existingAdmin = await storage.getAdminByUsername(adminData.username);
+      if (existingAdmin) {
+        return res.status(400).json({ message: "Admin username already exists" });
+      }
+      
+      const admin = await storage.createAdmin(adminData);
+      res.json({ id: admin.id, username: admin.username });
+    } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid admin data", errors: error.errors });
+      }
       res.status(500).json({ message: "Internal server error" });
     }
   });

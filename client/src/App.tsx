@@ -6,7 +6,7 @@ import { Dashboard } from './components/dashboard/Dashboard';
 import { UserManagement } from './components/users/UserManagement';
 import { UserRegistration } from './components/UserRegistration';
 import { SeatManager } from './components/SeatManager';
-import { Settings } from './components/Settings';
+import { EnhancedSettings } from './components/EnhancedSettings';
 
 function AppContent() {
   const { state } = useApp();
@@ -27,7 +27,7 @@ function AppContent() {
       case 'seats':
         return <SeatManager />;
       case 'settings':
-        return <Settings />;
+        return <EnhancedSettings />;
       default:
         return <Dashboard />;
     }

@@ -44,9 +44,13 @@ export const admins = pgTable("admins", {
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   slotPricing: json("slot_pricing").notNull(),
+  slotTimings: json("slot_timings").notNull(),
   gmail: text("gmail").notNull(),
   appPassword: text("app_password").notNull(),
   telegramChatIds: json("telegram_chat_ids").notNull(),
+  welcomeEmailTemplate: text("welcome_email_template").notNull(),
+  dueDateEmailTemplate: text("due_date_email_template").notNull(),
+  sendgridApiKey: text("sendgrid_api_key"),
 });
 
 // Insert schemas
@@ -75,9 +79,13 @@ export const insertAdminSchema = createInsertSchema(admins).pick({
 
 export const insertSettingsSchema = createInsertSchema(settings).pick({
   slotPricing: true,
+  slotTimings: true,
   gmail: true,
   appPassword: true,
   telegramChatIds: true,
+  welcomeEmailTemplate: true,
+  dueDateEmailTemplate: true,
+  sendgridApiKey: true,
 });
 
 export const insertUserLogSchema = createInsertSchema(userLogs).pick({

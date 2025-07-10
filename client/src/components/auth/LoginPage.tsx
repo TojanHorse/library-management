@@ -5,6 +5,7 @@ import { Card } from '../ui/Card';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { Shield, User, Lock, Building2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { apiService } from '../../services/api';
 
 export function LoginPage() {
   const { dispatch } = useApp();
@@ -21,10 +22,9 @@ export function LoginPage() {
     setError('');
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const success = await apiService.loginAdmin(credentials.username, credentials.password);
       
-      if (credentials.username === 'Vidhyadham' && credentials.password === '9012vidhya09') {
+      if (success) {
         dispatch({ type: 'SET_CURRENT_ADMIN', payload: credentials.username });
         dispatch({ type: 'SET_AUTHENTICATED', payload: true });
       } else {

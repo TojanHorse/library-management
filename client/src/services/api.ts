@@ -136,6 +136,15 @@ class ApiService {
       return false;
     }
   }
+
+  async createAdmin(adminData: { username: string; password: string }): Promise<{ id: number; username: string }> {
+    const response = await this.makeRequest(`${this.baseUrl}/admin`, {
+      method: 'POST',
+      body: JSON.stringify(adminData),
+    });
+    
+    return response.json();
+  }
 }
 
 export const apiService = new ApiService();

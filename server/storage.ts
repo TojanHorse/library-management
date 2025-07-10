@@ -79,9 +79,92 @@ export class MemStorage implements IStorage {
         'Afternoon': 1200,
         'Evening': 1500
       },
+      slotTimings: {
+        'Morning': '6:00 AM - 12:00 PM',
+        'Afternoon': '12:00 PM - 6:00 PM',
+        'Evening': '6:00 PM - 12:00 AM'
+      },
       gmail: 'upwebmonitor@gmail.com',
       appPassword: 'zfjthyhndoayvgwd',
-      telegramChatIds: []
+      telegramChatIds: [],
+      welcomeEmailTemplate: `Dear {{name}},
+
+We're thrilled to welcome you to VidhyaDham, your dedicated learning sanctuary where silence, structure, and self-growth go hand-in-hand. Your registration is complete, and your journey of focused study begins now.
+
+📋 Your Registration Details
+Field   Information
+👤 Name  {{name}}
+📧 Email {{email}}
+📱 Phone Number  {{phone}}
+💺 Seat Number   {{seatNumber}}
+⏰ Time Slot     {{slot}}
+🆔 ID Type       {{idType}} (optional)
+📅 Valid Till    {{validTill}} (30 days)
+
+You will receive a renewal reminder 3 days before your due date. If the payment is not marked by the admin within 3 days after that, your seat will be auto-terminated.
+
+🌱 Make the Most of Your Time Here
+"Here at Vidhyadham, we believe in creating not just a space, but an experience — where every hour you spend is a step closer to your goals."
+
+To maintain your membership:
+
+Keep track of your fee status from the dashboard.
+
+Reach out to the admin for any updates or edits to your details.
+
+Remember: your comfort and concentration is our top priority.
+
+🌸 A Thoughtful Blessing Before You Begin
+"सरस्वती नमस्तुभ्यं वरदे कामरूपिणि।
+विद्यारम्भं करिष्यामि सिद्धिर्भवतु मे सदा॥"
+
+"O Goddess Saraswati, granter of boons and embodiment of knowledge, I begin my learning – may success be mine always."
+
+Thank you for choosing Vidhyadham.
+We're honored to be part of your journey.
+
+Warm regards,
+Team Vidhyadham
+📚 Learn. Focus. Transform.`,
+      dueDateEmailTemplate: `Dear {{name}},
+
+We hope your time at VidhyaDham has been peaceful and productive.
+
+This is a gentle reminder that your seat subscription is due for renewal.
+
+🪪 Your Membership Details
+Detail  Information
+📍 Seat Number   {{seatNumber}}
+⏰ Time Slot     {{slot}}
+📅 Due Date      {{dueDate}}
+🧾 Payment Status        ❗ Pending
+
+🔔 What You Need to Do
+To keep your seat active and uninterrupted:
+
+Please contact the admin to complete your renewal process.
+
+Failure to renew within 3 days of this message will result in automatic termination of your seat.
+
+Once renewed, you'll receive confirmation on your registered email.
+
+🌟 Why Renew?
+VidhyaDham is more than just a study space. It's a place of:
+
+Focus and discipline
+
+Calm environment for deep work
+
+Dedicated seating based on your chosen schedule
+
+"विद्या धनं सर्वधनप्रधानम्।"
+Knowledge is the greatest wealth of all.
+
+Let's continue your journey of learning together.
+Warm regards,
+Team VidhyaDham
+📚 Learn. Focus. Transform.`,
+      sendgridApiKey: null
     };
     
     // Initialize 114 seats
