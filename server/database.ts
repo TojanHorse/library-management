@@ -42,7 +42,11 @@ class DatabaseConnection {
 
       // Handle connection events
       mongoose.connection.on('error', (error) => {
-        console.error('MongoDB connection error:', error);
+        // Only log non-connection errors to reduce spam
+        if (!error.message.includes('MongoNotConnectedError') && 
+            !error.message.includes('Client must be connected')) {
+          console.error('MongoDB connection error:', error);
+        }
         this.isConnected = false;
       });
 

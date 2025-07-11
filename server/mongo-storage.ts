@@ -52,12 +52,17 @@ export class MongoStorage implements IStorage {
   // Helper method to ensure database connection
   private async ensureConnection(): Promise<boolean> {
     if (!database.isConnectedToDatabase()) {
-      console.log('Database not connected, attempting to reconnect...');
+      // Silently attempt reconnection without logging
       try {
         await database.connect();
         return true;
       } catch (error) {
-        console.error('Failed to reconnect to database:', error);
+        // Only log if it's not a connection error
+        if (!(error instanceof Error) || 
+            (!error.message.includes('MongoNotConnectedError') && 
+             !error.message.includes('Client must be connected'))) {
+          console.error('Failed to reconnect to database:', error);
+        }
         return false;
       }
     }
@@ -125,13 +130,17 @@ export class MongoStorage implements IStorage {
   async getAllUsers(): Promise<IUser[]> {
     try {
       if (!(await this.ensureConnection())) {
-        console.error('Database not available for getAllUsers operation');
+        // Silently return empty array instead of logging error
         return [];
       }
       
       const users = await User.find().lean();
       return users.map(user => ({ ...user, _id: user._id.toString() })) as IUser[];
     } catch (error) {
+      // Check if it's a connection error and handle silently
+      if (error instanceof Error && error.message.includes('MongoNotConnectedError')) {
+        return [];
+      }
       console.error('Error getting all users:', error);
       return [];
     }
@@ -299,13 +308,17 @@ export class MongoStorage implements IStorage {
   async getSettings(): Promise<ISettings | null> {
     try {
       if (!(await this.ensureConnection())) {
-        console.error('Database not available for getSettings operation');
+        // Silently return null instead of logging error
         return null;
       }
       
       const settings = await Settings.findOne().lean();
       return settings ? { ...settings, _id: settings._id.toString() } as ISettings : null;
     } catch (error) {
+      // Check if it's a connection error and handle silently
+      if (error instanceof Error && error.message.includes('MongoNotConnectedError')) {
+        return null;
+      }
       console.error('Error getting settings:', error);
       return null;
     }
