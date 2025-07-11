@@ -82,6 +82,16 @@ export class DueDateScheduler {
       const users = await mongoStorage.getActiveUsers();
       const settings = await mongoStorage.getSettings();
       
+      if (!users || users.length === 0) {
+        console.log('⚠️ [SCHEDULER] No active users found or database unavailable');
+        return;
+      }
+      
+      if (!settings) {
+        console.log('⚠️ [SCHEDULER] Settings not found or database unavailable');
+        return;
+      }
+      
       console.log(`👥 [SCHEDULER] Found ${users.length} total users to check`);
 
       // Check email configuration

@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { database } from './database';
 import { 
   User, 
   Seat, 
@@ -48,9 +49,29 @@ export interface IStorage {
 
 export class MongoStorage implements IStorage {
   
+  // Helper method to ensure database connection
+  private async ensureConnection(): Promise<boolean> {
+    if (!database.isConnectedToDatabase()) {
+      console.log('Database not connected, attempting to reconnect...');
+      try {
+        await database.connect();
+        return true;
+      } catch (error) {
+        console.error('Failed to reconnect to database:', error);
+        return false;
+      }
+    }
+    return true;
+  }
+  
   // User operations
   async getUser(id: string): Promise<IUser | null> {
     try {
+      if (!(await this.ensureConnection())) {
+        console.error('Database not available for getUser operation');
+        return null;
+      }
+      
       const user = await User.findById(id).lean();
       return user ? { ...user, _id: user._id.toString() } as IUser : null;
     } catch (error) {
@@ -103,6 +124,11 @@ export class MongoStorage implements IStorage {
 
   async getAllUsers(): Promise<IUser[]> {
     try {
+      if (!(await this.ensureConnection())) {
+        console.error('Database not available for getAllUsers operation');
+        return [];
+      }
+      
       const users = await User.find().lean();
       return users.map(user => ({ ...user, _id: user._id.toString() })) as IUser[];
     } catch (error) {
@@ -113,6 +139,11 @@ export class MongoStorage implements IStorage {
 
   async getActiveUsers(): Promise<IUser[]> {
     try {
+      if (!(await this.ensureConnection())) {
+        console.error('Database not available for getActiveUsers operation');
+        return [];
+      }
+      
       const users = await User.find({ status: 'active' }).lean();
       return users.map(user => ({ ...user, _id: user._id.toString() })) as IUser[];
     } catch (error) {
@@ -267,6 +298,11 @@ export class MongoStorage implements IStorage {
   // Settings operations
   async getSettings(): Promise<ISettings | null> {
     try {
+      if (!(await this.ensureConnection())) {
+        console.error('Database not available for getSettings operation');
+        return null;
+      }
+      
       const settings = await Settings.findOne().lean();
       return settings ? { ...settings, _id: settings._id.toString() } as ISettings : null;
     } catch (error) {

@@ -15,7 +15,7 @@ class DatabaseConnection {
 
   public async connect(): Promise<void> {
     try {
-      if (this.isConnected) {
+      if (this.isConnected && mongoose.connection.readyState === 1) {
         console.log('Database already connected');
         return;
       }
@@ -25,7 +25,17 @@ class DatabaseConnection {
         throw new Error('MONGODB_URI environment variable is not set');
       }
 
-      await mongoose.connect(mongoUri);
+      console.log('Connecting to MongoDB...');
+      await mongoose.connect(mongoUri, {
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        bufferMaxEntries: 0,
+        bufferCommands: false,
+        maxIdleTimeMS: 30000,
+        connectTimeoutMS: 10000,
+      });
+      
       this.isConnected = true;
       console.log('MongoDB connected successfully');
 
@@ -36,8 +46,14 @@ class DatabaseConnection {
       });
 
       mongoose.connection.on('disconnected', () => {
-        console.log('MongoDB disconnected');
+        console.log('MongoDB disconnected - attempting to reconnect...');
         this.isConnected = false;
+        this.reconnect();
+      });
+
+      mongoose.connection.on('reconnected', () => {
+        console.log('MongoDB reconnected successfully');
+        this.isConnected = true;
       });
 
       // Initialize default data if needed
@@ -45,7 +61,42 @@ class DatabaseConnection {
 
     } catch (error) {
       console.error('Database connection failed:', error);
+      this.isConnected = false;
       throw error;
+    }
+  }
+
+  private async reconnect(): Promise<void> {
+    let retries = 0;
+    const maxRetries = 5;
+    
+    while (retries < maxRetries && !this.isConnected) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        console.log(`Attempting to reconnect to MongoDB (attempt ${retries + 1}/${maxRetries})`);
+        
+        if (mongoose.connection.readyState === 0) {
+          await mongoose.connect(process.env.MONGODB_URI!, {
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            bufferMaxEntries: 0,
+            bufferCommands: false,
+            maxIdleTimeMS: 30000,
+            connectTimeoutMS: 10000,
+          });
+        }
+        
+        this.isConnected = true;
+        console.log('MongoDB reconnected successfully');
+        break;
+      } catch (error) {
+        retries++;
+        console.error(`Reconnection attempt ${retries} failed:`, error);
+        if (retries >= maxRetries) {
+          console.error('Max reconnection attempts reached. Manual intervention required.');
+        }
+      }
     }
   }
 
