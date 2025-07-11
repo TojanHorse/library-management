@@ -5,7 +5,8 @@ import { feeCalculator } from './fee-calculator';
 import * as cron from 'node-cron';
 
 interface DueDateUser {
-  id: string;
+  _id?: string;
+  id?: string;
   name: string;
   email: string;
   phone: string;
@@ -175,8 +176,15 @@ export class DueDateScheduler {
     try {
       console.log(`🚫 [SCHEDULER] Processing termination for user: ${user.name} (${user.email})`);
       
+      // Get user ID (handle both _id and id fields)
+      const userId = user._id?.toString() || user.id?.toString();
+      if (!userId) {
+        console.error('User ID not found for termination processing');
+        return;
+      }
+      
       // Update user status to expired
-      await mongoStorage.updateUser(user.id, { feeStatus: 'expired' });
+      await mongoStorage.updateUser(userId, { feeStatus: 'expired' });
       
       // Free up the seat
       await mongoStorage.updateSeat(user.seatNumber, {
@@ -204,11 +212,11 @@ export class DueDateScheduler {
   private async sendTerminationNotice(user: DueDateUser, template: string) {
     try {
       const emailData = {
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        seatNumber: user.seatNumber.toString(),
-        slot: user.slot
+        name: user.name || 'N/A',
+        email: user.email || 'N/A',
+        phone: user.phone || 'N/A',
+        seatNumber: user.seatNumber?.toString() || 'N/A',
+        slot: user.slot || 'N/A'
       };
 
       let emailContent = template.replace(/\{\{(\w+)\}\}/g, (match: string, key: string) => {
@@ -230,19 +238,31 @@ export class DueDateScheduler {
 
   private async sendDueDateReminder(user: DueDateUser, template: string) {
     try {
+      console.log(`📧 [SCHEDULER] Sending due date reminder to: ${user.email}`);
+      
+      if (!user.registrationDate) {
+        console.error('Registration date is missing for user:', user.email);
+        return;
+      }
+      
       const registrationDate = new Date(user.registrationDate);
       const dueDate = new Date(registrationDate);
       dueDate.setDate(dueDate.getDate() + 30); // 30 days from registration
 
       const emailData = {
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        seatNumber: user.seatNumber,
-        slot: user.slot,
+        name: user.name || 'N/A',
+        email: user.email || 'N/A',
+        phone: user.phone || 'N/A',
+        address: user.address || 'N/A',
+        seatNumber: user.seatNumber?.toString() || 'N/A',
+        slot: user.slot || 'N/A',
         dueDate: dueDate.toLocaleDateString('en-IN')
       };
+
+      if (!user.email) {
+        console.error('User email is missing for reminder');
+        return;
+      }
 
       const result = await emailService.sendDueDateReminder(
         user.email,
@@ -251,16 +271,19 @@ export class DueDateScheduler {
       );
 
       if (result.success) {
-        console.log(`Due date reminder sent to ${user.email}`);
+        console.log(`✅ [SCHEDULER] Due date reminder sent to ${user.email}`);
         
         // Log the reminder
-        await mongoStorage.createUserLog({
-          userId: user.id.toString(),
-          action: 'Due date reminder email sent',
-          adminId: 'system'
-        });
+        const userId = user._id?.toString() || user.id?.toString();
+        if (userId) {
+          await mongoStorage.createUserLog({
+            userId,
+            action: 'Due date reminder email sent',
+            adminId: 'system'
+          });
+        }
       } else {
-        console.error(`Failed to send due date reminder to ${user.email}:`, result.error);
+        console.error(`❌ [SCHEDULER] Failed to send due date reminder to ${user.email}:`, result.error);
       }
 
     } catch (error) {
