@@ -15,12 +15,12 @@ GMAIL_USER=your-email@gmail.com
 GMAIL_PASSWORD=your-app-password
 ```
 
-### Telegram Configuration
+### Telegram Configuration (Default Bot - Always Active)
 ```
 TELEGRAM_BOT_TOKEN=7987816282:AAFlkQP8hASFjATNp2s4MhgspPP2yovaLUI
-TELEGRAM_CHAT_IDS=your_chat_id_here
-# Multiple chat IDs separated by commas:
-# TELEGRAM_CHAT_IDS=123456789,987654321,456789123
+TELEGRAM_CHAT_IDS=939382380
+# Add additional chat IDs separated by commas if needed:
+# TELEGRAM_CHAT_IDS=939382380,123456789,987654321
 ```
 
 ### Session Security
@@ -41,7 +41,7 @@ MONGODB_URI=mongodb://localhost:27017/vidhya-dham
 GMAIL_USER=admin@vidhyadham.com
 GMAIL_PASSWORD=your-gmail-app-password
 TELEGRAM_BOT_TOKEN=7987816282:AAFlkQP8hASFjATNp2s4MhgspPP2yovaLUI
-TELEGRAM_CHAT_IDS=123456789
+TELEGRAM_CHAT_IDS=939382380
 SESSION_SECRET=vidhya-dham-secret-key-2024
 NODE_ENV=development
 ```

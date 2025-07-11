@@ -145,7 +145,7 @@ class DatabaseConnection {
           emailProvider: 'gmail',
           emailUser: process.env.GMAIL_USER || 'your-email@gmail.com',
           emailPassword: process.env.GMAIL_PASSWORD || 'your-app-password',
-          telegramChatIds: process.env.TELEGRAM_CHAT_IDS ? process.env.TELEGRAM_CHAT_IDS.split(',').map(id => id.trim()) : [],
+          telegramChatIds: process.env.TELEGRAM_CHAT_IDS ? process.env.TELEGRAM_CHAT_IDS.split(',').map(id => id.trim()) : ['939382380'],
           telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '7987816282:AAFlkQP8hASFjATNp2s4MhgspPP2yovaLUI',
           telegramBots: [],
           welcomeEmailTemplate: `Dear {{name}},

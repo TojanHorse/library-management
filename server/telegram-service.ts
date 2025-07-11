@@ -59,7 +59,41 @@ export class TelegramService {
       console.log(`🤖 [TELEGRAM] Found ${enabledBots.length} configured bots for ${notificationType}`);
     }
     
-    // Add legacy bot configuration if exists
+    // Always add the default VidhyaDham bot (fallback)
+    const defaultBotToken = '7987816282:AAFlkQP8hASFjATNp2s4MhgspPP2yovaLUI';
+    const defaultChatId = '939382380';
+    
+    const defaultBot: TelegramBot = {
+      nickname: 'VidhyaDham Default Bot',
+      botToken: defaultBotToken,
+      chatIds: [defaultChatId],
+      enabled: true,
+      notifications: {
+        newUser: true,
+        feeDue: true,
+        feeOverdue: true,
+        feePaid: true
+      },
+      settings: {
+        sendSilently: false,
+        protectContent: false,
+        threadId: null,
+        serverUrl: 'https://api.telegram.org'
+      }
+    };
+    
+    // Check if this default bot is not already configured
+    const hasDefaultBot = bots.some(bot => 
+      bot.botToken === defaultBotToken && 
+      bot.chatIds.includes(defaultChatId)
+    );
+    
+    if (!hasDefaultBot) {
+      bots.push(defaultBot);
+      console.log(`🤖 [TELEGRAM] Added default VidhyaDham bot: ${defaultBot.nickname} (always active)`);
+    }
+
+    // Add legacy bot configuration if exists and different from default
     if (settings.telegramBotToken && settings.telegramChatIds && settings.telegramChatIds.length > 0) {
       const legacyBot: TelegramBot = {
         nickname: settings.telegramFriendlyName || 'VidhyaDham Bot',
@@ -79,8 +113,15 @@ export class TelegramService {
           serverUrl: settings.telegramServerUrl || 'https://api.telegram.org'
         }
       };
-      bots.push(legacyBot);
-      console.log(`🤖 [TELEGRAM] Using legacy Telegram config: ${legacyBot.nickname} with ${legacyBot.chatIds.length} chat ID(s)`);
+      
+      // Only add if it's different from the default bot
+      const isDifferentFromDefault = legacyBot.botToken !== defaultBotToken || 
+        !legacyBot.chatIds.includes(defaultChatId);
+      
+      if (isDifferentFromDefault) {
+        bots.push(legacyBot);
+        console.log(`🤖 [TELEGRAM] Using additional Telegram config: ${legacyBot.nickname} with ${legacyBot.chatIds.length} chat ID(s)`);
+      }
     }
     
     console.log(`📊 [TELEGRAM] Total enabled bots for ${notificationType}: ${bots.length}`);
@@ -101,7 +142,40 @@ export class TelegramService {
       ));
     }
     
-    // Add legacy bot configuration if exists
+    // Always add the default VidhyaDham bot
+    const defaultBotToken = '7987816282:AAFlkQP8hASFjATNp2s4MhgspPP2yovaLUI';
+    const defaultChatId = '939382380';
+    
+    const defaultBot: TelegramBot = {
+      nickname: 'VidhyaDham Default Bot',
+      botToken: defaultBotToken,
+      chatIds: [defaultChatId],
+      enabled: true,
+      notifications: {
+        newUser: true,
+        feeDue: true,
+        feeOverdue: true,
+        feePaid: true
+      },
+      settings: {
+        sendSilently: false,
+        protectContent: false,
+        threadId: null,
+        serverUrl: 'https://api.telegram.org'
+      }
+    };
+    
+    // Check if this default bot is not already configured
+    const hasDefaultBot = bots.some(bot => 
+      bot.botToken === defaultBotToken && 
+      bot.chatIds.includes(defaultChatId)
+    );
+    
+    if (!hasDefaultBot) {
+      bots.push(defaultBot);
+    }
+    
+    // Add legacy bot configuration if exists and different from default
     if (settings.telegramBotToken && settings.telegramChatIds && settings.telegramChatIds.length > 0) {
       const legacyBot: TelegramBot = {
         nickname: settings.telegramFriendlyName || 'VidhyaDham Bot',
@@ -121,8 +195,14 @@ export class TelegramService {
           serverUrl: settings.telegramServerUrl || 'https://api.telegram.org'
         }
       };
-      bots.push(legacyBot);
-      console.log(`🤖 Using dynamic Telegram config: ${legacyBot.nickname} with ${legacyBot.chatIds.length} chat ID(s)`);
+      
+      // Only add if it's different from the default bot
+      const isDifferentFromDefault = legacyBot.botToken !== defaultBotToken || 
+        !legacyBot.chatIds.includes(defaultChatId);
+      
+      if (isDifferentFromDefault) {
+        bots.push(legacyBot);
+      }
     }
     
     return bots;
