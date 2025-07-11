@@ -9,6 +9,7 @@ import { emailService, EmailService } from "./email-service";
 import { database } from "./database";
 import { cloudinaryService } from "./cloudinary";
 import { healthCheckService } from "./health-check";
+import { serviceManager } from "./service-manager";
 import { errorHandler, notFound } from "./middleware/error-handler";
 
 // Global error handlers
@@ -141,7 +142,7 @@ app.use((req, res, next) => {
   // Use environment port or default to 5000
   // Render provides PORT environment variable
   const port = process.env.PORT || 5000;
-  server.listen(port, () => {
+  server.listen(port, async () => {
     log(`serving on port ${port}`);
     
     // Initialize email service with environment variables
@@ -162,6 +163,14 @@ app.use((req, res, next) => {
     
     // Start health check monitoring
     healthCheckService.startHealthCheckInterval(60000); // Every minute
+    
+    // Initialize service manager for graceful degradation
+    try {
+      await serviceManager.initialize();
+      log('✅ Service manager initialized successfully');
+    } catch (error) {
+      log('⚠️ Service manager initialization warning:', error);
+    }
     
     // Render.com keepalive - prevent service from sleeping
     if (process.env.NODE_ENV === 'production') {

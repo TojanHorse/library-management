@@ -9,6 +9,8 @@ import { telegramService } from "./telegram-service";
 import { feeCalculator } from "./fee-calculator";
 import { requireAuth, optionalAuth, AuthenticatedRequest } from "./auth-middleware";
 import { healthCheckService } from "./health-check";
+import { serviceManager } from "./service-manager";
+import { asyncHandler, ApiError } from "./middleware/error-handler";
 import { z } from "zod";
 
 // Utility function to sanitize settings data before sending to client
@@ -675,33 +677,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Seat routes
-  app.get("/api/seats", async (req: Request, res: Response) => {
-    try {
-      const seats = await mongoStorage.getAllSeats();
-      res.json(seats);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+  app.get("/api/seats", asyncHandler(async (req: Request, res: Response) => {
+    const seats = await mongoStorage.getAllSeats();
+    if (!seats) {
+      throw new ApiError("Failed to retrieve seats", 500);
     }
-  });
+    res.json(seats);
+  }));
   
-  app.put("/api/seats/:number", async (req: Request, res: Response) => {
-    try {
-      const seatNumber = parseInt(req.params.number);
-      
-      // Validate input data
-      const validatedData = updateSeatSchema.parse(req.body);
-      
-      const seat = await mongoStorage.updateSeat(seatNumber, validatedData);
-      
-      if (!seat) {
-        return res.status(404).json({ message: "Seat not found" });
-      }
-      
-      res.json(seat);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+  app.put("/api/seats/:number", asyncHandler(async (req: Request, res: Response) => {
+    const seatNumber = parseInt(req.params.number);
+    
+    if (isNaN(seatNumber) || seatNumber < 1 || seatNumber > 114) {
+      throw new ApiError("Invalid seat number", 400);
     }
-  });
+    
+    // Validate input data
+    const validatedData = updateSeatSchema.parse(req.body);
+    
+    const seat = await mongoStorage.updateSeat(seatNumber, validatedData);
+    
+    if (!seat) {
+      throw new ApiError("Seat not found", 404);
+    }
+    
+    res.json(seat);
+  }));
   
   // Settings routes
   app.get("/api/settings", async (req: Request, res: Response) => {
@@ -785,37 +786,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Export routes
-  app.get("/api/export/csv", async (req: Request, res: Response) => {
-    try {
-      const users = await mongoStorage.getAllUsers();
-      
-      // Create CSV content
-      const csvHeader = "Name,Email,Phone,Seat Number,Slot,Fee Status,Registration Date\n";
-      const csvRows = users.map(user => 
-        `"${user.name}","${user.email}","${user.phone}",${user.seatNumber},"${user.slot}","${user.feeStatus}","${user.registrationDate}"`
-      ).join('\n');
-      
-      const csvContent = csvHeader + csvRows;
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
-      res.send(csvContent);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+  app.get("/api/export/csv", asyncHandler(async (req: Request, res: Response) => {
+    const users = await mongoStorage.getAllUsers();
+    
+    if (!users || users.length === 0) {
+      throw new ApiError("No users found to export", 404);
     }
-  });
+    
+    // Create CSV content with proper escaping
+    const csvHeader = "Name,Email,Phone,Seat Number,Slot,Fee Status,Registration Date\n";
+    const csvRows = users.map(user => {
+      const formatDate = (date: any) => {
+        if (!date) return '';
+        return new Date(date).toLocaleDateString();
+      };
+      
+      return `"${user.name?.replace(/"/g, '""') || ''}","${user.email?.replace(/"/g, '""') || ''}","${user.phone?.replace(/"/g, '""') || ''}",${user.seatNumber || ''},"${user.slot?.replace(/"/g, '""') || ''}","${user.feeStatus?.replace(/"/g, '""') || ''}","${formatDate(user.registrationDate)}"`;
+    }).join('\n');
+    
+    const csvContent = csvHeader + csvRows;
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
+    res.send(csvContent);
+  }));
   
-  app.get("/api/export/pdf", async (req: Request, res: Response) => {
-    try {
-      // For now, return a simple text response
-      // In a real application, you would use a PDF generation library
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'attachment; filename="users.pdf"');
-      res.send("PDF generation not implemented yet");
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+  app.get("/api/export/pdf", asyncHandler(async (req: Request, res: Response) => {
+    // PDF functionality not implemented - return meaningful error
+    throw new ApiError("PDF export feature is not yet implemented. Please use CSV export instead.", 501);
+  }));
   
   // Email service status route
   app.get("/api/email/status", async (req: Request, res: Response) => {
@@ -1230,6 +1229,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // Service status endpoint for frontend
+  app.get("/api/services/status", asyncHandler(async (req: Request, res: Response) => {
+    const serviceStatus = await serviceManager.checkServiceAvailability();
+    res.json({
+      services: serviceStatus,
+      timestamp: new Date().toISOString(),
+      message: "Service availability status"
+    });
+  }));
 
   // Webhook-based scheduler endpoints (for free hosting)
   app.post("/api/webhook/scheduler", async (req: Request, res: Response) => {
