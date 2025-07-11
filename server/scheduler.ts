@@ -2,6 +2,7 @@ import { mongoStorage } from './mongo-storage';
 import { emailService, EmailService } from './email-service';
 import { telegramService } from './telegram-service';
 import { feeCalculator } from './fee-calculator';
+import * as cron from 'node-cron';
 
 interface DueDateUser {
   id: string;
@@ -16,16 +17,15 @@ interface DueDateUser {
 }
 
 export class DueDateScheduler {
-  private intervalId: NodeJS.Timeout | null = null;
-  private readonly CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  private cronJob: cron.ScheduledTask | null = null;
   private lastCheckTime: Date | null = null;
   private isRunning: boolean = false;
 
   start() {
-    console.log('Starting due date reminder scheduler...');
+    console.log('🚀 Starting due date reminder scheduler with node-cron...');
     
     if (this.isRunning) {
-      console.log('Scheduler already running');
+      console.log('⚠️  Scheduler already running');
       return;
     }
     
@@ -34,20 +34,33 @@ export class DueDateScheduler {
     // Run immediately on start
     this.checkDueDates();
     
-    // Then run every 24 hours
-    this.intervalId = setInterval(() => {
+    // Schedule to run every day at 9:00 AM
+    this.cronJob = cron.schedule('0 9 * * *', () => {
+      console.log('🔄 Cron job triggered at 9:00 AM');
       this.checkDueDates();
-    }, this.CHECK_INTERVAL);
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Kolkata' // Indian timezone
+    });
     
-    console.log(`Scheduler started - will check every ${this.CHECK_INTERVAL / (60 * 60 * 1000)} hours`);
+    // Also run every 6 hours as backup
+    const backupCron = cron.schedule('0 */6 * * *', () => {
+      console.log('🔄 Backup cron job triggered (every 6 hours)');
+      this.checkDueDates();
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Kolkata'
+    });
+    
+    console.log('✅ Scheduler started - will check daily at 9:00 AM and every 6 hours as backup');
   }
 
   stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.cronJob) {
+      this.cronJob.stop();
+      this.cronJob = null;
       this.isRunning = false;
-      console.log('Due date reminder scheduler stopped');
+      console.log('❌ Due date reminder scheduler stopped');
     }
   }
 
@@ -55,8 +68,8 @@ export class DueDateScheduler {
     return {
       isRunning: this.isRunning,
       lastCheckTime: this.lastCheckTime,
-      nextCheckTime: this.lastCheckTime ? new Date(this.lastCheckTime.getTime() + this.CHECK_INTERVAL) : null,
-      checkInterval: this.CHECK_INTERVAL
+      nextCheckTime: this.cronJob ? 'Daily at 9:00 AM IST + Every 6 hours' : null,
+      checkInterval: 'Daily at 9:00 AM IST + Every 6 hours as backup'
     };
   }
 
@@ -155,6 +168,63 @@ export class DueDateScheduler {
 
     } catch (error) {
       console.error('❌ [SCHEDULER] Error in enhanced fee management:', error);
+    }
+  }
+
+  private async processTermination(user: DueDateUser, settings: any, emailConfigured: boolean, hasActiveBots: boolean) {
+    try {
+      console.log(`🚫 [SCHEDULER] Processing termination for user: ${user.name} (${user.email})`);
+      
+      // Update user status to expired
+      await mongoStorage.updateUser(user.id, { feeStatus: 'expired' });
+      
+      // Free up the seat
+      await mongoStorage.updateSeat(user.seatNumber, {
+        status: 'available',
+        userId: null
+      });
+      
+      // Send termination notification if email is configured
+      if (emailConfigured && settings?.dueDateEmailTemplate) {
+        await this.sendTerminationNotice(user, settings.dueDateEmailTemplate);
+      }
+      
+      // Send Telegram notification if configured
+      if (hasActiveBots) {
+        const message = `🚫 *Seat Termination Notice*\n\nSeat ${user.seatNumber} has been terminated due to overdue fees.\n\nUser: ${user.name}\nEmail: ${user.email}\nPhone: ${user.phone}`;
+        await telegramService.sendMessage(message);
+      }
+      
+      console.log(`✅ [SCHEDULER] Termination processed for ${user.name}`);
+    } catch (error) {
+      console.error(`❌ [SCHEDULER] Error processing termination for ${user.name}:`, error);
+    }
+  }
+
+  private async sendTerminationNotice(user: DueDateUser, template: string) {
+    try {
+      const emailData = {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        seatNumber: user.seatNumber.toString(),
+        slot: user.slot
+      };
+
+      let emailContent = template.replace(/\{\{(\w+)\}\}/g, (match: string, key: string) => {
+        return emailData[key as keyof typeof emailData] || match;
+      });
+
+      const emailOptions = {
+        to: user.email,
+        subject: 'Seat Termination Notice - VidhyaDham',
+        html: emailContent
+      };
+
+      await emailService.sendEmail(emailOptions);
+      console.log(`📧 [SCHEDULER] Termination notice sent to ${user.email}`);
+    } catch (error) {
+      console.error(`❌ [SCHEDULER] Error sending termination notice to ${user.email}:`, error);
     }
   }
 

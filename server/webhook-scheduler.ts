@@ -51,7 +51,7 @@ export class WebhookScheduler {
       }
 
       if (smtpConfig) {
-        emailService.configure(smtpConfig);
+        emailService.configure(smtpConfig, settings.emailUser);
       }
 
       // Process each user
@@ -98,9 +98,10 @@ export class WebhookScheduler {
             }
           } else if (user.feeStatus === 'due' || user.feeStatus === 'expired') {
             // Handle overdue payments
+            // Use registration date as last payment date for new users
             const calculation = feeCalculator.calculateNextDueDate(
-              user.registrationDate,
-              user.registrationDate,
+              user.registrationDate, // lastPaymentDate
+              user.registrationDate, // registrationDate
               settings.slotPricing,
               user.slot as 'Morning' | 'Afternoon' | 'Evening'
             );

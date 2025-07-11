@@ -1,5 +1,16 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Development files
 .DS_Store
 server/public
 vite.config.ts.*
@@ -11,3 +22,36 @@ vite.config.ts.*
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Logs
+logs/
+*.log
+
+# Replit files (not needed for production)
+.replit
+replit.nix
+replit.md
+
+# AI-generated documentation (will be replaced with proper docs)
+test-*.js
+test-*.md
+*-SUMMARY.md
+FIXES_SUMMARY.md
+ERROR_HANDLING_FIXES.md
+EDIT_IMPROVEMENTS_SUMMARY.md
+CRITICAL_FIXES_SUMMARY.md
+
+# Temporary files
+temp-*.json
+complete-settings-update.json
+update-email-templates.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+*.tmp

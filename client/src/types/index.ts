@@ -70,6 +70,9 @@ export interface Settings {
   telegramThreadId?: string;
   telegramFriendlyName?: string;
   telegramDefaultEnabled?: boolean;
+  telegramCustomTemplate?: boolean;
+  telegramSendSilently?: boolean;
+  telegramProtectContent?: boolean;
   telegramBots?: TelegramBot[];
   welcomeEmailTemplate: string;
   dueDateEmailTemplate: string;

@@ -2,43 +2,80 @@ import { User, Seat, Settings } from '../types';
 
 class ApiService {
   private baseUrl = '/api'; // Use relative path for same-origin requests
+  private retryCount = 3;
+  private retryDelay = 1000; // 1 second
+
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
-    try {
-      const headers: Record<string, string> = {};
-      
-      // Only add Content-Type header if we have a body
-      if (options.body) {
-        headers['Content-Type'] = 'application/json';
-      }
+    let lastError: Error;
 
-      const response = await fetch(url, {
-        headers: {
-          ...headers,
-          ...options.headers,
-        },
-        ...options,
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Request failed';
-        try {
-          const error = await response.json();
-          errorMessage = error.message || `HTTP ${response.status}: ${response.statusText}`;
-        } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    for (let attempt = 0; attempt < this.retryCount; attempt++) {
+      try {
+        const headers: Record<string, string> = {};
+        
+        // Only add Content-Type header if we have a body
+        if (options.body) {
+          headers['Content-Type'] = 'application/json';
         }
-        throw new Error(errorMessage);
-      }
 
-      return response;
-    } catch (error) {
-      // Network errors, timeout, etc.
-      if (error instanceof TypeError) {
-        throw new Error('Network error - please check your connection');
+        // Add timeout to request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+        const response = await fetch(url, {
+          headers: {
+            ...headers,
+            ...options.headers,
+          },
+          signal: controller.signal,
+          ...options,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          let errorMessage = 'Request failed';
+          try {
+            const error = await response.json();
+            errorMessage = error.message || error.error || `HTTP ${response.status}: ${response.statusText}`;
+          } catch {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+          throw new Error(errorMessage);
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        
+        // Don't retry on client errors (4xx) or abort errors
+        if (error instanceof Error && 
+            (error.message.includes('HTTP 4') || error.name === 'AbortError')) {
+          break;
+        }
+        
+        // Don't retry on the last attempt
+        if (attempt === this.retryCount - 1) {
+          break;
+        }
+        
+        console.warn(`Request failed (attempt ${attempt + 1}/${this.retryCount}):`, error);
+        await this.delay(this.retryDelay * (attempt + 1)); // Exponential backoff
       }
-      throw error;
     }
+
+    // Handle specific error types
+    if (lastError.name === 'AbortError') {
+      throw new Error('Request timeout - please try again');
+    }
+    if (lastError instanceof TypeError || lastError.message.includes('fetch')) {
+      throw new Error('Network error - please check your connection');
+    }
+    
+    throw lastError;
   }
 
   async registerUser(userData: Omit<User, 'id' | 'logs'>): Promise<User> {

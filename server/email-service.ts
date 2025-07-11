@@ -28,6 +28,22 @@ export class EmailService {
   private fromEmail: string = '';
   private config: SMTPConfig | null = null;
   private sendGridApiKey: string | null = null;
+  private readonly EMAIL_TIMEOUT = 30000; // 30 seconds
+
+  private async sendWithTimeout(mailOptions: any): Promise<any> {
+    if (!this.transporter) {
+      throw new Error('Email service not configured');
+    }
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Email sending timeout after ${this.EMAIL_TIMEOUT / 1000} seconds`)), this.EMAIL_TIMEOUT);
+    });
+    
+    return Promise.race([
+      this.transporter.sendMail(mailOptions),
+      timeoutPromise
+    ]);
+  }
 
   configure(smtpConfig: SMTPConfig, fromEmail: string) {
     console.log('Configuring email service with SMTP:', {
@@ -118,7 +134,9 @@ export class EmailService {
       };
 
       console.log('Sending welcome email to:', userEmail);
-      const info = await this.transporter.sendMail(mailOptions);
+      
+      const info = await this.sendWithTimeout(mailOptions);
+      
       console.log('Welcome email sent:', info.messageId);
       
       return {success: true};

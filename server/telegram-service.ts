@@ -21,6 +21,19 @@ export interface TelegramBot {
 }
 
 export class TelegramService {
+  private readonly TELEGRAM_TIMEOUT = 15000; // 15 seconds
+  
+  private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+    const timeoutPromise = new Promise<Response>((_, reject) => {
+      setTimeout(() => reject(new Error(`Telegram API timeout after ${this.TELEGRAM_TIMEOUT / 1000} seconds`)), this.TELEGRAM_TIMEOUT);
+    });
+    
+    return Promise.race([
+      fetch(url, options),
+      timeoutPromise
+    ]);
+  }
+
   private async getEnabledBots(notificationType: keyof TelegramBot['notifications']): Promise<TelegramBot[]> {
     const settings = await mongoStorage.getSettings();
     if (!settings) return [];
@@ -136,7 +149,7 @@ export class TelegramService {
         payload.message_thread_id = threadId;
       }
 
-      const response = await fetch(url, {
+      const response = await this.fetchWithTimeout(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

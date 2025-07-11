@@ -8,6 +8,7 @@ import { cloudinaryService, upload } from "./cloudinary";
 import { telegramService } from "./telegram-service";
 import { feeCalculator } from "./fee-calculator";
 import { requireAuth, optionalAuth, AuthenticatedRequest } from "./auth-middleware";
+import { healthCheckService } from "./health-check";
 import { z } from "zod";
 
 // Utility function to sanitize settings data before sending to client

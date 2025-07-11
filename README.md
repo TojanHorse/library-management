@@ -1,68 +1,61 @@
-# VidhyaDham Seat Management System
+# VidhyaDham - Library Management System
 
-A modern seat management system built with React, Express, MongoDB, and Cloudinary for file storage.
+A modern library seat booking and management system built with React, TypeScript, Node.js, and MongoDB. This system allows users to register for library seats, manage payments, and provides administrators with comprehensive tools for user and seat management.
 
 ## Features
 
-- **Real-time seat management** with MongoDB
-- **File upload and storage** using Cloudinary
-- **Email notifications** via Gmail/SMTP
-- **User registration and management**
-- **Admin dashboard with real-time updates**
-- **Due date reminders automation**
-- **Export functionality** (CSV/PDF)
-- **Secure authentication** with bcrypt
+### User Management
+- **User Registration**: Register users with personal details and ID verification
+- **Seat Assignment**: Smart seat allocation based on slot availability
+- **Payment Tracking**: Monitor fee status (paid, due, expired)
+- **File Upload**: ID document upload with Cloudinary integration
+
+### Admin Dashboard
+- **User Management**: View, edit, and delete user records
+- **Seat Management**: Real-time seat availability tracking
+- **Payment Management**: Mark payments, send reminders
+- **Settings Configuration**: Email, Telegram, and slot configurations
+
+### Notifications
+- **Email Notifications**: Welcome emails, payment reminders, due date alerts
+- **Telegram Notifications**: Multi-bot support for different notification types
+- **Automated Scheduling**: Cron-based reminder system
+
+### Advanced Features
+- **Real-time Updates**: Automatic UI refresh for data changes
+- **Error Recovery**: Comprehensive error handling and retry mechanisms
+- **Health Monitoring**: Built-in health checks and monitoring
+- **File Management**: Secure file upload with validation
+- **Export Functionality**: CSV export for user data
 
 ## Technology Stack
 
-- **Frontend**: React, TypeScript, Tailwind CSS
-- **Backend**: Express.js, Node.js
-- **Database**: MongoDB with Mongoose
+- **Frontend**: React 18, TypeScript, Tailwind CSS, Vite
+- **Backend**: Node.js, Express.js, TypeScript
+- **Database**: MongoDB with Mongoose ODM
 - **File Storage**: Cloudinary
-- **Email Service**: Nodemailer with Gmail
-- **Authentication**: bcrypt for password hashing
+- **Scheduling**: Node-cron for automated tasks
+- **Session Management**: Express-session with MongoDB store
+- **Validation**: Zod for runtime type checking
 
-## Prerequisites
+## Quick Start
 
-Before you begin, ensure you have:
+### Prerequisites
+- Node.js 18+ 
+- MongoDB database
+- Cloudinary account (for file uploads)
 
-- Node.js (v16 or higher)
-- MongoDB (local installation or MongoDB Atlas)
-- Gmail account with App Password enabled
-- Cloudinary account
-
-## Setup Instructions
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/TojanHorse/vidhyaDham.git
-cd vidhyaDham
-```
-
-### 2. Install Dependencies
-
-```bash
-npm install
-```
-
-### 3. Environment Configuration
-
-Copy the example environment file and configure it:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` file with your configuration:
+### Environment Variables
+Create a `.env` file in the root directory:
 
 ```env
-# MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017/vidhyadham
-# For MongoDB Atlas:
-# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/vidhyadham?retryWrites=true&w=majority
+# Database
+MONGODB_URI=mongodb://localhost:27017/vidhya-dham
 
-# Gmail Configuration (Use App Password)
+# Session Security
+SESSION_SECRET=your-secure-session-secret
+
+# Email Configuration (Gmail example)
 GMAIL_USER=your-email@gmail.com
 GMAIL_PASSWORD=your-app-password
 
@@ -71,201 +64,124 @@ CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
 
-# Application
-NODE_ENV=development
+# Production Settings
+NODE_ENV=production
 PORT=5000
 ```
 
-### 4. Gmail Setup
+### Installation & Setup
 
-1. Enable 2-Factor Authentication on your Gmail account
-2. Generate an App Password:
-   - Go to Google Account settings
-   - Security → 2-Step Verification → App passwords
-   - Generate a password for "Mail"
-   - Use this password in `GMAIL_PASSWORD`
+1. **Clone and Install**
+   ```bash
+   git clone <repository-url>
+   cd vidhya-dham
+   npm install
+   ```
 
-### 5. MongoDB Setup
+2. **Build the Application**
+   ```bash
+   npm run build
+   ```
 
-#### Option A: Local MongoDB
-```bash
-# Install MongoDB locally and start the service
-mongod --dbpath /path/to/your/data/directory
-```
-
-#### Option B: MongoDB Atlas (Cloud)
-1. Create a free account at [MongoDB Atlas](https://www.mongodb.com/atlas)
-2. Create a new cluster
-3. Get your connection string
-4. Replace `MONGODB_URI` in `.env`
-
-### 6. Cloudinary Setup
-
-1. Create a free account at [Cloudinary](https://cloudinary.com/)
-2. Get your credentials from the dashboard
-3. Add them to your `.env` file
-
-### 7. Run the Application
-
-#### Development Mode
-```bash
-npm run dev
-```
-
-#### Production Mode
-```bash
-npm run build
-npm start
-```
+3. **Start the Production Server**
+   ```bash
+   npm start
+   ```
 
 The application will be available at `http://localhost:5000`
 
-## Default Admin Account
-
-After first startup, a default admin account is created:
-
-- **Username**: `Vidhyadham`
-- **Password**: `admin123`
-- **Email**: `admin@vidhyadham.com`
-
-**⚠️ Important**: Change the default admin password immediately after first login!
-
-## API Endpoints
-
-### Authentication
-- `POST /api/admin/login` - Admin login
-- `POST /api/admin` - Create new admin
-
-### Users
-- `GET /api/users` - Get all users
-- `POST /api/users` - Create new user
-- `PUT /api/users/:id` - Update user
-- `DELETE /api/users/:id` - Delete user
-
-### Seats
-- `GET /api/seats` - Get all seats
-- `PUT /api/seats/:number` - Update seat status
-
-### File Upload
-- `POST /api/upload/file` - Upload single file
-- `POST /api/upload/files` - Upload multiple files
-- `DELETE /api/upload/file/:publicId` - Delete file
-
-### Settings
-- `GET /api/settings` - Get settings
-- `PUT /api/settings` - Update settings
-
-### Email & Notifications
-- `POST /api/test/email` - Test email configuration
-- `POST /api/send-due-reminder/:userId` - Send due date reminder
-
-## File Structure
-
-```
-vidhyaDham/
-├── client/                 # React frontend
-├── server/                 # Express backend
-│   ├── database.ts        # MongoDB connection
-│   ├── mongo-storage.ts   # Database operations
-│   ├── email-service.ts   # Email service
-│   ├── cloudinary.ts      # File upload service
-│   ├── routes.ts          # API routes
-│   └── scheduler.ts       # Background tasks
-├── shared/                 # Shared types and schemas
-└── dist/                  # Built files
-```
-
 ## Development
 
+### Start Development Server
+```bash
+# Start both frontend and backend in development mode
+npm run dev
+```
+
 ### Available Scripts
-
-- `npm run dev` - Start development server
+- `npm run dev` - Start development server with hot reload
 - `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run check` - TypeScript type checking
+- `npm start` - Start production server
+- `npm run typecheck` - Run TypeScript type checking
 
-### Database Schema
+## Deployment
 
-The application uses MongoDB with the following collections:
+### Render.com Deployment
 
-- **users** - User registrations
-- **seats** - Seat availability and status
-- **admins** - Admin accounts
-- **settings** - Application configuration
-- **userlogs** - Audit trail for user actions
+1. **Connect Repository**: Link your GitHub repository to Render
 
-### File Uploads
+2. **Environment Variables**: Add all required environment variables in Render dashboard
 
-Files are stored in Cloudinary with the following structure:
-- **Folder**: `vidhyadham/documents`
-- **Allowed formats**: Images (JPEG, PNG, GIF, WebP), PDFs, Word documents
-- **Size limit**: 5MB per file
+3. **Build Settings**:
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Node Version**: 18+
 
-## Production Deployment
+4. **Health Check**: The application includes health monitoring at `/api/health`
 
-1. Set `NODE_ENV=production` in your environment
-2. Configure production MongoDB URI
-3. Set up proper SSL certificates
-4. Configure reverse proxy (nginx/apache)
-5. Set up process manager (PM2)
+### Database Setup
+- Use MongoDB Atlas for cloud database
+- Ensure connection string includes authentication
+- Set up database user with read/write permissions
 
-### Example PM2 Configuration
+### Email Configuration
+- Use Gmail App Passwords for authentication
+- Ensure "Less secure app access" is enabled if needed
+- Configure SMTP settings for custom email providers
 
-```json
-{
-  "name": "vidhyadham",
-  "script": "dist/index.js",
-  "env": {
-    "NODE_ENV": "production",
-    "PORT": "5000"
-  }
-}
-```
+### File Upload Setup
+- Create Cloudinary account
+- Configure upload presets and folder structure
+- Set appropriate file size and type restrictions
 
-## Troubleshooting
+## Configuration
 
-### Common Issues
+### Email Templates
+The system supports customizable email templates for:
+- Welcome emails for new registrations
+- Payment due reminders
+- Payment confirmation notifications
 
-1. **Email not sending**
-   - Verify Gmail App Password is correct
-   - Check if 2FA is enabled
-   - Ensure SMTP settings are correct
+### Telegram Integration
+- Support for multiple bot configurations
+- Granular notification type selection
+- Custom message templates and formatting
 
-2. **File upload fails**
-   - Verify Cloudinary credentials
-   - Check file size limits
-   - Ensure allowed file types
+### Slot Management
+- Configurable time slots (Morning, Afternoon, Evening, 12Hour, 24Hour)
+- Dynamic pricing per slot type
+- Real-time availability tracking
 
-3. **Database connection issues**
-   - Verify MongoDB is running
-   - Check connection string format
-   - Ensure network access for MongoDB Atlas
+## Monitoring & Maintenance
 
-### Debug Mode
+### Health Checks
+- Database connectivity monitoring
+- Service availability checks
+- Automated error recovery
 
-Enable debug logging by setting:
-```env
-NODE_ENV=development
-```
+### Logging
+- Comprehensive request/response logging
+- Error tracking and alerting
+- Performance monitoring
 
-## License
+### Backup & Recovery
+- Regular database backups recommended
+- Environment variable backup
+- File storage backup policies
 
-MIT License - see LICENSE file for details.
+## Security Features
+
+- Session-based authentication
+- Input validation and sanitization
+- File upload security restrictions
+- SQL injection protection
+- CSRF protection
+- Secure environment variable handling
 
 ## Support
 
-For support and questions:
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review the API documentation
+For technical support or feature requests, please refer to the documentation or contact the development team.
 
-## Contributing
+## License
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
----
-
-**Note**: This application replaces dummy data with real MongoDB integration, Cloudinary file storage, and Gmail email service for production use.
+This project is proprietary software developed for VidhyaDham library management.

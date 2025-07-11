@@ -177,6 +177,13 @@ export interface ISettings {
   emailUser: string;
   emailPassword: string;
   telegramChatIds: string[];
+  telegramBotToken?: string;
+  telegramServerUrl?: string;
+  telegramThreadId?: string;
+  telegramFriendlyName?: string;
+  telegramDefaultEnabled?: boolean;
+  telegramSendSilently?: boolean;
+  telegramProtectContent?: boolean;
   telegramBots?: ITelegramBot[];
   welcomeEmailTemplate: string;
   dueDateEmailTemplate: string;

@@ -8,6 +8,8 @@ import { dueDateScheduler } from "./scheduler";
 import { emailService, EmailService } from "./email-service";
 import { database } from "./database";
 import { cloudinaryService } from "./cloudinary";
+import { healthCheckService } from "./health-check";
+import { errorHandler, notFound } from "./middleware/error-handler";
 
 // Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
@@ -22,8 +24,17 @@ process.on('uncaughtException', (error) => {
 });
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// Request timeout middleware
+app.use((req, res, next) => {
+  res.setTimeout(30000, () => {
+    res.status(408).json({ error: 'Request timeout' });
+  });
+  next();
+});
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Session configuration
 app.use(session({
@@ -114,6 +125,10 @@ app.use((req, res, next) => {
     // Don't re-throw the error - this was causing process crashes
   });
 
+  // Error handling middleware (must be after all routes)
+  app.use(notFound);
+  app.use(errorHandler);
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -145,6 +160,9 @@ app.use((req, res, next) => {
     // Start the due date reminder scheduler
     dueDateScheduler.start();
     
+    // Start health check monitoring
+    healthCheckService.startHealthCheckInterval(60000); // Every minute
+    
     // Render.com keepalive - prevent service from sleeping
     if (process.env.NODE_ENV === 'production') {
       const KEEPALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
@@ -166,12 +184,14 @@ app.use((req, res, next) => {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     dueDateScheduler.stop();
+    healthCheckService.stopHealthCheckInterval();
     await database.disconnect();
     server.close();
   });
 
   process.on('SIGINT', async () => {
     dueDateScheduler.stop();
+    healthCheckService.stopHealthCheckInterval();
     await database.disconnect();
     server.close();
   });
