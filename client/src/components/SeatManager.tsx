@@ -4,7 +4,8 @@ import { Input } from './ui/Input';
 import { Modal } from './ui/Modal';
 import { Header } from './layout/Header';
 import { Card } from './ui/Card';
-import { Plus, Minus, Grid3x3, Settings, Trash2 } from 'lucide-react';
+import { Tooltip } from './ui/Tooltip';
+import { Plus, Minus, Grid3x3, Settings, Trash2, User, Clock, CreditCard, Phone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from './ui/Toast';
 
@@ -257,7 +258,7 @@ export function SeatManager() {
               {state.seats
                 .sort((a, b) => a.number - b.number)
                 .map(seat => {
-                  const user = state.users.find(u => u.id === seat.userId);
+                  const user = state.users.find(u => u.id === seat.userId || u._id === seat.userId);
                   
                   // Apply slot filter
                   let shouldShow = true;
@@ -272,37 +273,89 @@ export function SeatManager() {
                   }
                   
                   if (!shouldShow) return null;
+
+                  const getTooltipContent = () => {
+                    if (!user) {
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                            <span className="font-semibold">Seat {seat.number}</span>
+                          </div>
+                          <div className="text-green-400 text-xs">✅ Available for booking</div>
+                          <div className="text-gray-400 text-xs">Click to remove seat</div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2 min-w-[200px]">
+                        <div className="flex items-center space-x-2 pb-1 border-b border-gray-600">
+                          <div className={`w-3 h-3 rounded-full ${seat.status === 'paid' ? 'bg-green-500' : seat.status === 'due' ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                          <span className="font-semibold text-white">Seat {seat.number}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <User className="h-3 w-3 text-blue-400" />
+                            <span className="text-white text-sm">{user.name}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Phone className="h-3 w-3 text-gray-400" />
+                            <span className="text-gray-300 text-xs">{user.phone}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Clock className="h-3 w-3 text-purple-400" />
+                            <span className="text-gray-300 text-xs">{user.slot}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <CreditCard className="h-3 w-3 text-gray-400" />
+                            <span className={`text-xs ${user.feeStatus === 'paid' ? 'text-green-400' : user.feeStatus === 'due' ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {user.feeStatus === 'paid' ? 'Paid' : user.feeStatus === 'due' ? 'Due' : 'Expired'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-gray-400 text-xs pt-1 border-t border-gray-600">
+                          Click to remove seat & user
+                        </div>
+                      </div>
+                    );
+                  };
                   
                   return (
-                    <div
+                    <Tooltip
                       key={seat.number}
-                      className={`
-                        relative group w-6 h-6 sm:w-8 sm:h-8 rounded flex items-center justify-center 
-                        text-xs font-medium transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer
-                        ${getSeatColor(seat)}
-                      `}
-                      title={user ? `${user.name} (${user.slot})` : 'Available'}
+                      content={getTooltipContent()}
+                      position="top"
+                      delay={200}
                     >
-                      <span className="text-xs">{seat.number}</span>
-                      {seat.status === 'available' && (
-                        <button
-                          onClick={() => handleRemoveSeat(seat.number)}
-                          className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                          title="Remove seat"
-                        >
-                          <Minus className="h-2 w-2" />
-                        </button>
-                      )}
-                      {seat.status !== 'available' && (
-                        <button
-                          onClick={() => handleRemoveSeat(seat.number)}
-                          className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                          title="Remove seat and user"
-                        >
-                          <Trash2 className="h-2 w-2" />
-                        </button>
-                      )}
-                    </div>
+                      <div
+                        className={`
+                          relative group w-6 h-6 sm:w-8 sm:h-8 rounded flex items-center justify-center 
+                          text-xs font-medium transition-all duration-200 hover:scale-105 hover:shadow-lg cursor-pointer
+                          ${getSeatColor(seat)}
+                        `}
+                      >
+                        <span className="text-xs">{seat.number}</span>
+                        {seat.status === 'available' && (
+                          <button
+                            onClick={() => handleRemoveSeat(seat.number)}
+                            className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            title="Remove seat"
+                          >
+                            <Minus className="h-2 w-2" />
+                          </button>
+                        )}
+                        {seat.status !== 'available' && (
+                          <button
+                            onClick={() => handleRemoveSeat(seat.number)}
+                            className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            title="Remove seat and user"
+                          >
+                            <Trash2 className="h-2 w-2" />
+                          </button>
+                        )}
+                      </div>
+                    </Tooltip>
                   );
                 })}
             </div>
