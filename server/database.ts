@@ -99,6 +99,7 @@ class DatabaseConnection {
           emailUser: process.env.GMAIL_USER || 'your-email@gmail.com',
           emailPassword: process.env.GMAIL_PASSWORD || 'your-app-password',
           telegramChatIds: [],
+          telegramBots: [],
           welcomeEmailTemplate: `Dear {{name}},
 
 Welcome to VidhyaDham! Your registration is confirmed.
@@ -133,12 +134,172 @@ Failure to renew within 3 days of this message will result in automatic terminat
 
 Best regards,
 Team VidhyaDham`,
+          paymentConfirmationEmailTemplate: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Confirmation</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f9f9;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 620px;
+      margin: auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+      border-left: 6px solid #27ae60;
+    }
+    h2 {
+      color: #2ecc71;
+      margin-top: 0;
+    }
+    .info {
+      background-color: #f0fbf4;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    .info p {
+      margin: 5px 0;
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 14px;
+      color: #555;
+    }
+    blockquote {
+      font-style: italic;
+      color: #444;
+      background-color: #eafaf1;
+      border-left: 5px solid #1abc9c;
+      padding: 10px 20px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>✅ Payment Received!</h2>
+    <p>Dear <strong>{{name}}</strong>,</p>
+
+    <p>We're pleased to confirm that your payment has been successfully recorded for your seat at <strong>VidhyaDham</strong>. Your membership has been reactivated, and you may continue using the facilities during your selected time slot.</p>
+
+    <div class="info">
+      <p><strong>📅 Payment Date:</strong> {{paidDate}}</p>
+      <p><strong>🪑 Seat Number:</strong> {{seatNumber}}</p>
+      <p><strong>⏱️ Time Slot:</strong> {{slot}}</p>
+      <p><strong>🧾 Valid Until:</strong> {{nextDueDate}}</p>
+    </div>
+
+    <p class="footer">
+      If you have any questions or need support, feel free to contact us.<br>
+      Thank you for choosing VidhyaDham – a place for discipline, focus, and progress.
+    </p>
+
+    <blockquote>
+      "विद्या ददाति विनयं"<br>
+      <span style="font-size: 13px;">_Knowledge gives humility._</span>
+    </blockquote>
+
+    <p class="footer">– Team VidhyaDham</p>
+  </div>
+</body>
+</html>`,
           cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || null,
           cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || null,
           cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || null
         });
         await defaultSettings.save();
         console.log('Default settings created');
+      } else {
+        // Migration: Add payment confirmation template if it doesn't exist
+        if (!settingsExists.paymentConfirmationEmailTemplate) {
+          settingsExists.paymentConfirmationEmailTemplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Confirmation</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f9f9;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 620px;
+      margin: auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+      border-left: 6px solid #27ae60;
+    }
+    h2 {
+      color: #2ecc71;
+      margin-top: 0;
+    }
+    .info {
+      background-color: #f0fbf4;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    .info p {
+      margin: 5px 0;
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 14px;
+      color: #555;
+    }
+    blockquote {
+      font-style: italic;
+      color: #444;
+      background-color: #eafaf1;
+      border-left: 5px solid #1abc9c;
+      padding: 10px 20px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>✅ Payment Received!</h2>
+    <p>Dear <strong>{{name}}</strong>,</p>
+
+    <p>We're pleased to confirm that your payment has been successfully recorded for your seat at <strong>VidhyaDham</strong>. Your membership has been reactivated, and you may continue using the facilities during your selected time slot.</p>
+
+    <div class="info">
+      <p><strong>📅 Payment Date:</strong> {{paidDate}}</p>
+      <p><strong>🪑 Seat Number:</strong> {{seatNumber}}</p>
+      <p><strong>⏱️ Time Slot:</strong> {{slot}}</p>
+      <p><strong>🧾 Valid Until:</strong> {{nextDueDate}}</p>
+    </div>
+
+    <p class="footer">
+      If you have any questions or need support, feel free to contact us.<br>
+      Thank you for choosing VidhyaDham – a place for discipline, focus, and progress.
+    </p>
+
+    <blockquote>
+      "विद्या ददाति विनयं"<br>
+      <span style="font-size: 13px;">_Knowledge gives humility._</span>
+    </blockquote>
+
+    <p class="footer">– Team VidhyaDham</p>
+  </div>
+</body>
+</html>`;
+          await settingsExists.save();
+          console.log('Payment confirmation email template added to existing settings');
+        }
       }
 
       // Create 114 seats if not exists

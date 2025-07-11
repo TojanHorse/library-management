@@ -105,16 +105,6 @@ export function LoginPage() {
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              <p className="mb-1">Default credentials:</p>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 font-mono text-xs">
-                <p>Username: <span className="text-blue-600 dark:text-blue-400">Vidhyadham</span></p>
-                <p>Password: <span className="text-blue-600 dark:text-blue-400">admin123</span></p>
-              </div>
-            </div>
-          </div>
         </Card>
       </div>
     </div>

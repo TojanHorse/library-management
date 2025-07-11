@@ -79,9 +79,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
       </form>
 
       <div className="mt-6 text-center text-sm text-gray-500">
-        <p>Default credentials:</p>
-        <p>Username: Vidhyadham</p>
-        <p>Password: 9012vidhya09</p>
+        
       </div>
     </div>
   );

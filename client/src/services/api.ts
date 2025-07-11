@@ -4,20 +4,41 @@ class ApiService {
   private baseUrl = '/api'; // Use relative path for same-origin requests
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    });
+    try {
+      const headers: Record<string, string> = {};
+      
+      // Only add Content-Type header if we have a body
+      if (options.body) {
+        headers['Content-Type'] = 'application/json';
+      }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Network error' }));
-      throw new Error(error.message || 'Request failed');
+      const response = await fetch(url, {
+        headers: {
+          ...headers,
+          ...options.headers,
+        },
+        ...options,
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Request failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response;
+    } catch (error) {
+      // Network errors, timeout, etc.
+      if (error instanceof TypeError) {
+        throw new Error('Network error - please check your connection');
+      }
+      throw error;
     }
-
-    return response;
   }
 
   async registerUser(userData: Omit<User, 'id' | 'logs'>): Promise<User> {
@@ -112,10 +133,11 @@ class ApiService {
     return response.blob();
   }
 
-  async testEmail(): Promise<boolean> {
+  async testEmail(testEmail?: string): Promise<boolean> {
     try {
       const response = await this.makeRequest(`${this.baseUrl}/test/email`, {
         method: 'POST',
+        body: JSON.stringify({ testEmail: testEmail || 'test@example.com' }),
       });
       
       const result = await response.json();

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ThemeToggle } from '../ui/ThemeToggle';
-import { Bell, Search } from 'lucide-react';
+import { NotificationBell } from '../ui/NotificationBell';
+import { Search } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 interface HeaderProps {
@@ -44,10 +45,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           </div>
 
           {/* Notifications */}
-          <button className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
+          <NotificationBell />
 
           {/* Theme Toggle */}
           <ThemeToggle />

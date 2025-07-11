@@ -49,12 +49,16 @@ const settingsSchema = new mongoose.Schema({
   slotPricing: {
     Morning: { type: Number, default: 1000 },
     Afternoon: { type: Number, default: 1200 },
-    Evening: { type: Number, default: 1500 }
+    Evening: { type: Number, default: 1500 },
+    '12Hour': { type: Number, default: 1800 },
+    '24Hour': { type: Number, default: 2500 }
   },
   slotTimings: {
     Morning: { type: String, default: '6:00 AM - 12:00 PM' },
     Afternoon: { type: String, default: '12:00 PM - 6:00 PM' },
-    Evening: { type: String, default: '6:00 PM - 12:00 AM' }
+    Evening: { type: String, default: '6:00 PM - 12:00 AM' },
+    '12Hour': { type: String, default: '6:00 AM - 6:00 PM' },
+    '24Hour': { type: String, default: '24 Hours Access' }
   },
   emailProvider: { type: String, enum: ['gmail', 'outlook', 'custom'], default: 'gmail' },
   smtpHost: { type: String, default: null },
@@ -63,8 +67,28 @@ const settingsSchema = new mongoose.Schema({
   emailUser: { type: String, required: true },
   emailPassword: { type: String, required: true },
   telegramChatIds: [{ type: String }],
+  // Multi-bot configuration
+  telegramBots: [{
+    nickname: { type: String, required: true },
+    botToken: { type: String, required: true },
+    chatIds: [{ type: String }],
+    enabled: { type: Boolean, default: true },
+    notifications: {
+      newUser: { type: Boolean, default: true },
+      feeDue: { type: Boolean, default: true },
+      feeOverdue: { type: Boolean, default: true },
+      feePaid: { type: Boolean, default: true }
+    },
+    settings: {
+      sendSilently: { type: Boolean, default: false },
+      protectContent: { type: Boolean, default: false },
+      threadId: { type: String, default: null },
+      serverUrl: { type: String, default: 'https://api.telegram.org' }
+    }
+  }],
   welcomeEmailTemplate: { type: String, required: true },
   dueDateEmailTemplate: { type: String, required: true },
+  paymentConfirmationEmailTemplate: { type: String, required: true },
   // Cloudinary configuration
   cloudinaryCloudName: { type: String, default: null },
   cloudinaryApiKey: { type: String, default: null },
@@ -111,17 +135,40 @@ export interface ISeat {
   userId?: mongoose.Types.ObjectId | string | null;
 }
 
+export interface ITelegramBot {
+  nickname: string;
+  botToken: string;
+  chatIds: string[];
+  enabled: boolean;
+  notifications: {
+    newUser: boolean;
+    feeDue: boolean;
+    feeOverdue: boolean;
+    feePaid: boolean;
+  };
+  settings: {
+    sendSilently: boolean;
+    protectContent: boolean;
+    threadId: string | null;
+    serverUrl: string;
+  };
+}
+
 export interface ISettings {
   _id?: mongoose.Types.ObjectId | string;
   slotPricing: {
     Morning: number;
     Afternoon: number;
     Evening: number;
+    '12Hour': number;
+    '24Hour': number;
   };
   slotTimings: {
     Morning: string;
     Afternoon: string;
     Evening: string;
+    '12Hour': string;
+    '24Hour': string;
   };
   emailProvider: 'gmail' | 'outlook' | 'custom';
   smtpHost?: string;
@@ -130,8 +177,10 @@ export interface ISettings {
   emailUser: string;
   emailPassword: string;
   telegramChatIds: string[];
+  telegramBots?: ITelegramBot[];
   welcomeEmailTemplate: string;
   dueDateEmailTemplate: string;
+  paymentConfirmationEmailTemplate?: string;
   cloudinaryCloudName?: string;
   cloudinaryApiKey?: string;
   cloudinaryApiSecret?: string;

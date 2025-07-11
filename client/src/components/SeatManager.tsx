@@ -19,6 +19,7 @@ export function SeatManager() {
     endNumber: ''
   });
   const [loading, setLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState('All'); // Add slot filter
 
   const handleAddSeat = async () => {
     if (!newSeatNumber) return;
@@ -150,6 +151,25 @@ export function SeatManager() {
             </div>
           </Card>
 
+          {/* Slot Filter */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <h4 className="text-md font-medium text-gray-900 dark:text-white">View by Slot</h4>
+              <select
+                value={selectedSlot}
+                onChange={(e) => setSelectedSlot(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="All">All Slots</option>
+                <option value="Morning">Morning Slot</option>
+                <option value="Afternoon">Afternoon Slot</option>
+                <option value="Evening">Evening Slot</option>
+                <option value="12Hour">12 Hour Slot</option>
+                <option value="24Hour">24 Hour Slot</option>
+              </select>
+            </div>
+          </Card>
+
           {/* Statistics */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <Card padding="sm">
@@ -238,6 +258,21 @@ export function SeatManager() {
                 .sort((a, b) => a.number - b.number)
                 .map(seat => {
                   const user = state.users.find(u => u.id === seat.userId);
+                  
+                  // Apply slot filter
+                  let shouldShow = true;
+                  if (selectedSlot !== 'All') {
+                    if (seat.status === 'available') {
+                      shouldShow = true; // Always show available seats
+                    } else if (user) {
+                      shouldShow = user.slot === selectedSlot; // Only show if user's slot matches
+                    } else {
+                      shouldShow = false; // Hide seats without user info when filtering
+                    }
+                  }
+                  
+                  if (!shouldShow) return null;
+                  
                   return (
                     <div
                       key={seat.number}

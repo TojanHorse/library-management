@@ -103,6 +103,37 @@ export class CloudinaryService {
     }
   }
 
+  public async uploadImage(
+    buffer: Buffer,
+    options: { folder?: string; transformation?: any[] } = {}
+  ): Promise<{ secure_url: string; public_id: string }> {
+    try {
+      if (!this.isConfigured) {
+        throw new Error('Cloudinary is not configured');
+      }
+
+      // Convert buffer to base64 for upload
+      const b64 = buffer.toString('base64');
+      const dataURI = `data:image/jpeg;base64,${b64}`;
+
+      const result = await cloudinary.uploader.upload(dataURI, {
+        folder: options.folder || 'vidhyadham',
+        resource_type: 'auto',
+        transformation: options.transformation || [],
+        use_filename: true,
+        unique_filename: true
+      });
+
+      return {
+        secure_url: result.secure_url,
+        public_id: result.public_id
+      };
+    } catch (error) {
+      console.error('Error uploading image to Cloudinary:', error);
+      throw error;
+    }
+  }
+
   public async uploadBase64(
     base64Data: string,
     folder: string = 'vidhyadham',

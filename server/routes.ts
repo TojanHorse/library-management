@@ -3,8 +3,35 @@ import { createServer, type Server } from "http";
 import { mongoStorage } from "./mongo-storage";
 import { emailService, EmailService } from "./email-service";
 import { dueDateScheduler } from "./scheduler";
+import { webhookScheduler } from "./webhook-scheduler";
 import { cloudinaryService, upload } from "./cloudinary";
+import { telegramService } from "./telegram-service";
+import { feeCalculator } from "./fee-calculator";
+import { requireAuth, optionalAuth, AuthenticatedRequest } from "./auth-middleware";
 import { z } from "zod";
+
+// Utility function to sanitize settings data before sending to client
+function sanitizeSettings(settings: any) {
+  if (!settings) return null;
+  
+  // Remove sensitive fields that should never be sent to client
+  const {
+    emailPassword,
+    cloudinaryApiSecret,
+    cloudinaryApiKey,
+    telegramBotToken,
+    ...sanitizedSettings
+  } = settings;
+  
+  // Add flags to indicate if sensitive data exists
+  return {
+    ...sanitizedSettings,
+    hasEmailPassword: !!emailPassword,
+    hasCloudinaryApiSecret: !!cloudinaryApiSecret,
+    hasCloudinaryApiKey: !!cloudinaryApiKey,
+    hasTelegramBotToken: !!telegramBotToken
+  };
+}
 
 // Updated validation schemas for MongoDB
 const insertUserSchema = z.object({
@@ -13,7 +40,7 @@ const insertUserSchema = z.object({
   phone: z.string().min(6, "Phone number must be at least 6 characters"),
   address: z.string().min(1, "Address is required"),
   seatNumber: z.number().min(1).max(114),
-  slot: z.enum(["Morning", "Afternoon", "Evening"]),
+  slot: z.enum(["Morning", "Afternoon", "Evening", "12Hour", "24Hour"]),
   feeStatus: z.enum(["paid", "due", "expired"]).default("due"),
   idType: z.string().optional(),
   idNumber: z.string().optional(),
@@ -31,12 +58,16 @@ const insertSettingsSchema = z.object({
   slotPricing: z.object({
     Morning: z.number().min(0),
     Afternoon: z.number().min(0),
-    Evening: z.number().min(0)
+    Evening: z.number().min(0),
+    '12Hour': z.number().min(0).optional(),
+    '24Hour': z.number().min(0).optional()
   }),
   slotTimings: z.object({
     Morning: z.string(),
     Afternoon: z.string(),
-    Evening: z.string()
+    Evening: z.string(),
+    '12Hour': z.string().optional(),
+    '24Hour': z.string().optional()
   }),
   emailProvider: z.enum(["gmail", "outlook", "custom"]).default("gmail"),
   smtpHost: z.string().optional(),
@@ -45,17 +76,115 @@ const insertSettingsSchema = z.object({
   emailUser: z.string().email("Invalid email address"),
   emailPassword: z.string().min(1, "Email password is required"),
   telegramChatIds: z.array(z.string()).default([]),
+  telegramBots: z.array(z.object({
+    nickname: z.string(),
+    botToken: z.string(),
+    chatIds: z.array(z.string()).default([]),
+    enabled: z.boolean().default(true),
+    notifications: z.object({
+      newUser: z.boolean().default(true),
+      feeDue: z.boolean().default(true),
+      feeOverdue: z.boolean().default(true),
+      feePaid: z.boolean().default(true)
+    }),
+    settings: z.object({
+      sendSilently: z.boolean().default(false),
+      protectContent: z.boolean().default(false),
+      threadId: z.string().nullable().default(null),
+      serverUrl: z.string().default('https://api.telegram.org')
+    })
+  })).default([]),
   welcomeEmailTemplate: z.string().min(1, "Welcome email template is required"),
   dueDateEmailTemplate: z.string().min(1, "Due date email template is required"),
+  paymentConfirmationEmailTemplate: z.string().min(1, "Payment confirmation email template is required"),
   cloudinaryCloudName: z.string().optional(),
   cloudinaryApiKey: z.string().optional(),
   cloudinaryApiSecret: z.string().optional()
 });
 
+// Update schemas for validation - pick only the fields that can be updated
+const updateUserSchema = insertUserSchema.partial().omit({ feeStatus: true }).extend({
+  logs: z.array(z.object({
+    id: z.string(),
+    action: z.string(),
+    timestamp: z.string(),
+    adminId: z.string().optional()
+  })).optional(),
+  _id: z.string().optional(),
+  id: z.string().optional(),
+  registrationDate: z.string().optional(),
+  nextDueDate: z.string().optional(),
+  lastPaymentDate: z.string().optional()
+});
+
+const updateSeatSchema = z.object({
+  status: z.enum(["available", "occupied", "paid", "due", "expired"]).optional(),
+  userId: z.string().optional()
+});
+
+const updateSettingsSchema = insertSettingsSchema.partial().extend({
+  // Make email fields optional for updates
+  emailUser: z.string().email("Invalid email address").optional(),
+  emailPassword: z.string().optional(),
+  gmail: z.string().email("Invalid email address").optional(),
+  appPassword: z.string().optional(),
+  emailProvider: z.enum(["gmail", "outlook", "custom"]).optional(),
+  smtpHost: z.string().optional(),
+  smtpPort: z.number().optional(),
+  smtpSecure: z.boolean().optional(),
+  telegramBotToken: z.string().optional(),
+  telegramFriendlyName: z.string().optional(),
+  telegramServerUrl: z.string().optional(),
+  telegramThreadId: z.string().optional(),
+  telegramSendSilently: z.boolean().optional(),
+  telegramProtectContent: z.boolean().optional(),
+  telegramCustomTemplate: z.boolean().optional(),
+  telegramDefaultEnabled: z.boolean().optional()
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Apply authentication middleware to all API routes except login
+  app.use('/api', (req, res, next) => {
+    // Skip auth for login, register, test endpoints, webhook endpoints, and upload endpoints
+    if (req.path === '/admin/login' || req.path === '/admin/register' || req.path === '/admin/me' || req.path.startsWith('/test/') || req.path.startsWith('/webhook/') || req.path === '/health' || req.path.startsWith('/upload/')) {
+      return next();
+    }
+    return requireAuth(req as AuthenticatedRequest, res, next);
+  });
+  
   // Admin authentication routes
-  app.post("/api/admin/login", async (req: Request, res: Response) => {
+  // Admin registration route (for initial setup)
+  app.post("/api/admin/register", async (req: Request, res: Response) => {
+    try {
+      const adminData = insertAdminSchema.parse(req.body);
+      
+      // Check if any admin already exists by trying to find one
+      try {
+        const { Admin } = await import('../shared/mongoose-schema');
+        const existingAdmin = await Admin.findOne();
+        if (existingAdmin) {
+          return res.status(400).json({ message: "Admin already exists. Use login instead." });
+        }
+      } catch (dbError) {
+        console.log('No existing admin found, proceeding with registration');
+      }
+      
+      const admin = await mongoStorage.createAdmin(adminData);
+      res.json({ 
+        message: "Admin registered successfully",
+        admin: { id: admin._id, username: admin.username }
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid admin data", errors: (error as any).errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/login", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { username, password } = req.body;
       
@@ -68,11 +197,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!admin) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
+
+      // Store in session
+      req.session.adminId = admin._id?.toString();
+      req.session.username = admin.username;
       
-      res.json({ success: true, adminId: admin._id, username: admin.username });
+      res.json({ 
+        success: true, 
+        adminId: admin._id, 
+        username: admin.username,
+        message: "Login successful"
+      });
     } catch (error) {
       console.error('Error in admin login:', error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/logout", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error('Error destroying session:', err);
+          return res.status(500).json({ message: "Error logging out" });
+        }
+        res.clearCookie('connect.sid');
+        res.json({ success: true, message: "Logged out successfully" });
+      });
+    } catch (error) {
+      console.error('Error in admin logout:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/me", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.session.adminId || !req.session.username) {
+        return res.status(401).json({ 
+          isAuthenticated: false,
+          message: "Not authenticated" 
+        });
+      }
+
+      res.json({
+        isAuthenticated: true,
+        adminId: req.session.adminId,
+        username: req.session.username
+      });
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Change admin password
+  app.post("/api/admin/change-password", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.session.adminId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Not authenticated" 
+        });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Current password and new password are required" 
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "New password must be at least 6 characters long" 
+        });
+      }
+
+      // Get current admin
+      const admin = await mongoStorage.getAdmin(req.session.adminId);
+      if (!admin) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "Admin not found" 
+        });
+      }
+
+      // Verify current password
+      const bcrypt = await import('bcryptjs');
+      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, admin.password);
+      
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Current password is incorrect" 
+        });
+      }
+
+      // Hash new password
+      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+      
+      // Update password using direct MongoDB update since we don't have updateAdmin method
+      const { Admin } = await import('../shared/mongoose-schema');
+      await Admin.findByIdAndUpdate(req.session.adminId, {
+        password: hashedNewPassword
+      });
+
+      // Log the password change
+      await mongoStorage.createUserLog({
+        userId: req.session.adminId,
+        action: 'Admin password changed',
+        adminId: req.session.adminId
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Password changed successfully" 
+      });
+
+    } catch (error) {
+      console.error('Change password error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to change password: " + (error instanceof Error ? error.message : 'Unknown error')
+      });
     }
   });
 
@@ -220,6 +470,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Don't fail registration if email fails
       }
       
+      // Send Telegram notification for new user
+      try {
+        await telegramService.sendNewUserNotification({
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          seatNumber: user.seatNumber,
+          slot: user.slot
+        });
+        
+        await mongoStorage.createUserLog({
+          userId: user._id ? user._id.toString() : '',
+          action: "Telegram notification sent for new user",
+          adminId: undefined
+        });
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification:', telegramError);
+        // Don't fail registration if Telegram fails
+      }
+      
       const logs = await mongoStorage.getUserLogs(user._id ? user._id.toString() : '');
       res.json({ ...user, logs });
     } catch (error) {
@@ -234,7 +504,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/users/:id", async (req: Request, res: Response) => {
     try {
       const userId = req.params.id;
-      const userData = req.body;
+      
+      // Validate input data
+      try {
+        var validatedData = updateUserSchema.parse(req.body);
+      } catch (validationError) {
+        console.error('Validation error:', validationError);
+        return res.status(400).json({ 
+          message: "Invalid input data", 
+          errors: validationError instanceof Error ? validationError.message : 'Validation failed' 
+        });
+      }
+      
+      // Additional security: prevent elevation of privileges
+      if ('role' in req.body || 'feeStatus' in req.body) {
+        return res.status(403).json({ message: "Cannot modify restricted fields" });
+      }
       
       // Get original user data first
       const originalUser = await mongoStorage.getUser(userId);
@@ -242,16 +527,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const user = await mongoStorage.updateUser(userId, userData);
+      const user = await mongoStorage.updateUser(userId, validatedData);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
       
       // Real-time seat updates - if seat number changed
-      if (userData.seatNumber && userData.seatNumber !== originalUser.seatNumber) {
+      if (validatedData.seatNumber && validatedData.seatNumber !== originalUser.seatNumber) {
         try {
           // Check if new seat is available
-          const newSeat = await mongoStorage.getSeat(userData.seatNumber);
+          const newSeat = await mongoStorage.getSeat(validatedData.seatNumber);
           if (!newSeat || (newSeat.status !== 'available' && newSeat.userId !== (user._id ? user._id.toString() : ''))) {
             throw new Error("New seat is not available");
           }
@@ -263,15 +548,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           
           // Assign new seat
-          await mongoStorage.updateSeat(userData.seatNumber, {
-            status: userData.feeStatus || user.feeStatus,
+          await mongoStorage.updateSeat(validatedData.seatNumber, {
+            status: user.feeStatus,
             userId: user._id ? user._id.toString() : ''
           });
           
           // Log seat change
           await mongoStorage.createUserLog({
             userId: user._id ? user._id.toString() : '',
-            action: `Seat changed from ${originalUser.seatNumber} to ${userData.seatNumber}`,
+            action: `Seat changed from ${originalUser.seatNumber} to ${validatedData.seatNumber}`,
             adminId: req.body.adminId
           });
         } catch (seatError) {
@@ -281,17 +566,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Real-time fee status updates
-      if (userData.feeStatus && userData.feeStatus !== originalUser.feeStatus) {
+      if (validatedData.feeStatus && validatedData.feeStatus !== originalUser.feeStatus) {
         try {
           await mongoStorage.updateSeat(user.seatNumber, {
-            status: userData.feeStatus,
+            status: validatedData.feeStatus,
             userId: user._id ? user._id.toString() : ''
           });
           
           // Log fee status change
           await mongoStorage.createUserLog({
             userId: user._id ? user._id.toString() : '',
-            action: `Fee status changed from ${originalUser.feeStatus} to ${userData.feeStatus}`,
+            action: `Fee status changed from ${originalUser.feeStatus} to ${validatedData.feeStatus}`,
             adminId: req.body.adminId
           });
         } catch (feeError) {
@@ -300,8 +585,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Create general user log
-      const changedFields = Object.keys(userData).filter(key => 
-        userData[key] !== originalUser[key as keyof typeof originalUser]
+      const changedFields = Object.keys(validatedData).filter(key => 
+        validatedData[key] !== originalUser[key as keyof typeof originalUser]
       );
       
       if (changedFields.length > 0) {
@@ -310,6 +595,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           action: `User updated: ${changedFields.join(', ')}`,
           adminId: req.body.adminId
         });
+        
+        // Send Telegram notification for user update
+        try {
+          await telegramService.sendUserUpdatedNotification({
+            name: user.name,
+            email: user.email,
+            seatNumber: user.seatNumber,
+            slot: user.slot
+          });
+        } catch (telegramError) {
+          console.error('Failed to send Telegram notification for user update:', telegramError);
+        }
       }
       
       const logs = await mongoStorage.getUserLogs(user._id ? user._id.toString() : '');
@@ -350,6 +647,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error logging deletion:', logError);
       }
       
+      // Send Telegram notification for user deletion
+      try {
+        await telegramService.sendUserDeletedNotification({
+          name: user.name,
+          email: user.email,
+          seatNumber: user.seatNumber,
+          slot: user.slot
+        });
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification for user deletion:', telegramError);
+      }
+      
       // Delete user
       const deleted = await mongoStorage.deleteUser(userId);
       
@@ -377,9 +686,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/seats/:number", async (req: Request, res: Response) => {
     try {
       const seatNumber = parseInt(req.params.number);
-      const seatData = req.body;
       
-      const seat = await mongoStorage.updateSeat(seatNumber, seatData);
+      // Validate input data
+      const validatedData = updateSeatSchema.parse(req.body);
+      
+      const seat = await mongoStorage.updateSeat(seatNumber, validatedData);
       
       if (!seat) {
         return res.status(404).json({ message: "Seat not found" });
@@ -395,23 +706,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/settings", async (req: Request, res: Response) => {
     try {
       const settings = await mongoStorage.getSettings();
-      res.json(settings);
+      // Sanitize sensitive data before sending to client
+      const sanitizedSettings = sanitizeSettings(settings);
+      res.json(sanitizedSettings);
     } catch (error) {
+      console.error('Settings fetch error:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
   
   app.put("/api/settings", async (req: Request, res: Response) => {
     try {
-      const settingsData = insertSettingsSchema.parse(req.body);
+      const settingsData = updateSettingsSchema.parse(req.body);
+      
+      // Map client field names to server field names
+      const mappedSettings = { ...settingsData };
+      
+      // Handle email configuration mapping
+      if (settingsData.gmail) {
+        mappedSettings.emailUser = settingsData.gmail;
+        if (!mappedSettings.emailProvider) {
+          mappedSettings.emailProvider = 'gmail';
+        }
+      }
+      if (settingsData.appPassword) {
+        mappedSettings.emailPassword = settingsData.appPassword;
+      }
       
       console.log('Updating settings with email config:', {
-        emailProvider: settingsData.emailProvider,
-        emailUser: settingsData.emailUser,
-        hasEmailPassword: !!settingsData.emailPassword
+        emailProvider: mappedSettings.emailProvider,
+        emailUser: mappedSettings.emailUser,
+        hasEmailPassword: !!mappedSettings.emailPassword
       });
       
-      const settings = await mongoStorage.updateSettings(settingsData);
+      const settings = await mongoStorage.updateSettings(mappedSettings);
       
       // Configure email service immediately after settings update
       if (settings.emailUser && settings.emailPassword) {
@@ -437,8 +765,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log('Email service reconfigured with new settings');
         }
       }
+
+      // Legacy telegram chat IDs are now handled by the new bot management system
+      if (settings.telegramChatIds && settings.telegramChatIds.length > 0) {
+        console.log('Legacy telegram chat IDs found:', settings.telegramChatIds);
+      }
       
-      res.json(settings);
+      // Sanitize sensitive data before sending to client
+      const sanitizedSettings = sanitizeSettings(settings);
+      res.json(sanitizedSettings);
     } catch (error) {
       console.error('Error updating settings:', error);
       if (error instanceof Error && error.name === 'ZodError') {
@@ -572,12 +907,363 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Multi-bot management endpoints
+  app.post("/api/telegram/bots", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { nickname, botToken, chatIds, notifications, settings } = req.body;
+      
+      if (!nickname || !botToken) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Nickname and bot token are required" 
+        });
+      }
+      
+      const currentSettings = await mongoStorage.getSettings();
+      if (!currentSettings) {
+        return res.status(500).json({ success: false, message: "Settings not found" });
+      }
+      
+      const newBot = {
+        nickname,
+        botToken,
+        chatIds: chatIds || [],
+        enabled: true,
+        notifications: {
+          newUser: notifications?.newUser ?? true,
+          feeDue: notifications?.feeDue ?? true,
+          feeOverdue: notifications?.feeOverdue ?? true,
+          feePaid: notifications?.feePaid ?? true
+        },
+        settings: {
+          sendSilently: settings?.sendSilently ?? false,
+          protectContent: settings?.protectContent ?? false,
+          threadId: settings?.threadId ?? null,
+          serverUrl: settings?.serverUrl ?? 'https://api.telegram.org'
+        }
+      };
+      
+      const telegramBots = currentSettings.telegramBots || [];
+      telegramBots.push(newBot);
+      
+      await mongoStorage.updateSettings({ telegramBots });
+      
+      return res.json({
+        success: true,
+        message: `Bot "${nickname}" added successfully`,
+        bot: newBot
+      });
+      
+    } catch (error) {
+      console.error('Error adding bot:', error);
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  app.put("/api/telegram/bots/:index", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const botIndex = parseInt(req.params.index);
+      const updates = req.body;
+      
+      const currentSettings = await mongoStorage.getSettings();
+      if (!currentSettings) {
+        return res.status(500).json({ success: false, message: "Settings not found" });
+      }
+      
+      const telegramBots = currentSettings.telegramBots || [];
+      
+      if (botIndex < 0 || botIndex >= telegramBots.length) {
+        return res.status(400).json({ success: false, message: "Invalid bot index" });
+      }
+      
+      // Update the bot
+      telegramBots[botIndex] = { ...telegramBots[botIndex], ...updates };
+      
+      await mongoStorage.updateSettings({ telegramBots });
+      
+      return res.json({
+        success: true,
+        message: `Bot "${telegramBots[botIndex].nickname}" updated successfully`,
+        bot: telegramBots[botIndex]
+      });
+      
+    } catch (error) {
+      console.error('Error updating bot:', error);
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  app.delete("/api/telegram/bots/:index", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const botIndex = parseInt(req.params.index);
+      
+      const currentSettings = await mongoStorage.getSettings();
+      if (!currentSettings) {
+        return res.status(500).json({ success: false, message: "Settings not found" });
+      }
+      
+      const telegramBots = currentSettings.telegramBots || [];
+      
+      if (botIndex < 0 || botIndex >= telegramBots.length) {
+        return res.status(400).json({ success: false, message: "Invalid bot index" });
+      }
+      
+      const deletedBot = telegramBots.splice(botIndex, 1)[0];
+      
+      await mongoStorage.updateSettings({ telegramBots });
+      
+      return res.json({
+        success: true,
+        message: `Bot "${deletedBot.nickname}" deleted successfully`
+      });
+      
+    } catch (error) {
+      console.error('Error deleting bot:', error);
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  // Get chat IDs from Telegram updates
+  app.post("/api/telegram/get-chat-ids", async (req: Request, res: Response) => {
+    try {
+      const { botToken, serverUrl = 'https://api.telegram.org' } = req.body;
+      
+      if (!botToken) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Bot token is required" 
+        });
+      }
+      
+      // Get updates from Telegram
+      const response = await fetch(`${serverUrl}/bot${botToken}/getUpdates`);
+      const data = await response.json();
+      
+      if (!data.ok) {
+        return res.status(400).json({
+          success: false,
+          message: `Telegram API error: ${data.description || 'Unknown error'}`
+        });
+      }
+      
+      // Extract unique chat IDs from updates
+      const chatIds = new Set<string>();
+      const chatDetails: Array<{
+        id: string;
+        type: string;
+        title?: string;
+        username?: string;
+        firstName?: string;
+        lastName?: string;
+        lastMessage?: string;
+        messageCount: number;
+      }> = [];
+      
+      const chatMessageCounts = new Map<string, number>();
+      
+      data.result.forEach((update: any) => {
+        if (update.message && update.message.chat) {
+          const chat = update.message.chat;
+          const chatId = chat.id.toString();
+          
+          chatIds.add(chatId);
+          chatMessageCounts.set(chatId, (chatMessageCounts.get(chatId) || 0) + 1);
+          
+          // Check if we already have this chat in details
+          const existingChat = chatDetails.find(c => c.id === chatId);
+          if (!existingChat) {
+            chatDetails.push({
+              id: chatId,
+              type: chat.type,
+              title: chat.title,
+              username: chat.username,
+              firstName: chat.first_name,
+              lastName: chat.last_name,
+              lastMessage: update.message.text || update.message.caption || '[Media]',
+              messageCount: 1
+            });
+          } else {
+            // Update last message and count
+            existingChat.lastMessage = update.message.text || update.message.caption || '[Media]';
+            existingChat.messageCount = chatMessageCounts.get(chatId) || 1;
+          }
+        }
+      });
+      
+      // Sort by message count (most active first)
+      chatDetails.sort((a, b) => b.messageCount - a.messageCount);
+      
+      return res.json({
+        success: true,
+        chatIds: Array.from(chatIds),
+        chatDetails,
+        totalUpdates: data.result.length,
+        message: chatDetails.length > 0 
+          ? `Found ${chatDetails.length} chat(s) from recent messages`
+          : "No recent messages found. Send a message to your bot first!"
+      });
+      
+    } catch (error) {
+      console.error('Error fetching chat IDs:', error);
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  // Test Telegram bot functionality with dynamic settings
   app.post("/api/test/telegram", async (req: Request, res: Response) => {
     try {
-      // Mock telegram test
-      res.json({ success: true, message: "Telegram test successful" });
+      const settings = await mongoStorage.getSettings();
+      
+      // Use provided values or fall back to dynamic settings
+      const { 
+        botToken = settings?.telegramBotToken, 
+        chatId = settings?.telegramChatIds?.[0], 
+        silent = settings?.telegramSendSilently || false, 
+        protectContent = settings?.telegramProtectContent || false, 
+        threadId = settings?.telegramThreadId, 
+        serverUrl = settings?.telegramServerUrl || 'https://api.telegram.org' 
+      } = req.body;
+      
+      if (!botToken) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Bot token is required. Please configure it in settings or provide it in the request." 
+        });
+      }
+
+      if (!chatId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Chat ID is required. Please configure it in settings or provide it in the request." 
+        });
+      }
+
+      console.log(`🧪 Testing Telegram with dynamic config: Bot ending with ...${botToken.slice(-10)}, Chat ID: ${chatId}`);
+
+      // Test the bot with the configured or provided token and chat ID
+      const options = {
+        silent,
+        protectContent,
+        threadId,
+        serverUrl
+      };
+
+      const success = await telegramService.testBot(botToken, chatId, options);
+
+      if (success) {
+        res.json({ 
+          success: true, 
+          message: "Telegram test notification sent successfully! Check your Telegram for the message.",
+          usedDynamicConfig: !req.body.botToken || !req.body.chatId
+        });
+      } else {
+        res.json({ 
+          success: false, 
+          message: "Failed to send Telegram test message. Please check your bot token, chat ID, and configuration." 
+        });
+      }
+
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      console.error('Telegram test error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Telegram test failed: " + (error instanceof Error ? error.message : 'Unknown error')
+      });
+    }
+  });
+
+  // Get Telegram bot configuration
+  app.get("/api/telegram/bots", async (req: Request, res: Response) => {
+    try {
+      const bots = telegramService.getBots();
+      res.json(bots);
+    } catch (error) {
+      console.error('Get Telegram bots error:', error);
+      res.status(500).json({ message: "Failed to get Telegram bots" });
+    }
+  });
+
+  // Health check and scheduler status
+  app.get("/api/health", async (req: Request, res: Response) => {
+    try {
+      const settings = await mongoStorage.getSettings();
+      const users = await mongoStorage.getAllUsers();
+      
+      const healthStatus = {
+        server: "running",
+        database: "connected",
+        timestamp: new Date().toISOString(),
+        scheduler: dueDateScheduler.getStatus(),
+        services: {
+          email: settings?.emailUser ? "configured" : "not configured",
+          telegram: settings?.telegramBots?.length > 0 ? `${settings.telegramBots.length} bot(s) configured` : "no bots configured",
+          notifications: "active"
+        },
+        stats: {
+          totalUsers: users.length,
+          paidUsers: users.filter(u => u.feeStatus === 'paid').length,
+          dueUsers: users.filter(u => u.feeStatus === 'due').length,
+          expiredUsers: users.filter(u => u.feeStatus === 'expired').length
+        }
+      };
+      
+      res.json(healthStatus);
+    } catch (error) {
+      console.error('Health check error:', error);
+      res.status(500).json({
+        server: "error",
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Webhook-based scheduler endpoints (for free hosting)
+  app.post("/api/webhook/scheduler", async (req: Request, res: Response) => {
+    try {
+      console.log('🔗 Webhook scheduler triggered');
+      const result = await webhookScheduler.executeScheduledTasks();
+      
+      res.json({
+        success: result.success,
+        message: result.success ? 'Scheduled tasks completed successfully' : 'Some tasks failed',
+        results: result.results,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Webhook scheduler error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Webhook scheduler failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  app.get("/api/webhook/status", async (req: Request, res: Response) => {
+    try {
+      const status = await webhookScheduler.getWebhookStatus();
+      res.json(status);
+    } catch (error) {
+      console.error('Webhook status error:', error);
+      res.status(500).json({
+        ready: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
     }
   });
 
@@ -811,16 +1497,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Mark payment as paid with new fee calculation logic
+  app.post("/api/users/:id/mark-paid", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.params.id;
+      const user = await mongoStorage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const settings = await mongoStorage.getSettings();
+      if (!settings) {
+        return res.status(500).json({ message: "Settings not configured" });
+      }
+
+      // Calculate next due date using the new fee calculator
+      const calculation = feeCalculator.calculateNextDueDate(
+        new Date(), // Payment date is today
+        new Date(user.registrationDate),
+        settings.slotPricing || {},
+        user.slot
+      );
+
+      // Update user with new fee status and next due date
+      const updatedUser = await mongoStorage.updateUser(userId, {
+        feeStatus: 'paid',
+        nextDueDate: calculation.nextDueDate,
+        lastPaymentDate: new Date()
+      });
+
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update user" });
+      }
+
+      // Log the payment
+      await mongoStorage.createUserLog({
+        userId,
+        action: `Payment marked as paid - Next due: ${calculation.nextDueDate.toLocaleDateString()}`,
+        adminId: req.session.adminId || 'admin'
+      });
+
+      // Send payment confirmation email
+      console.log('Checking email conditions:', {
+        hasEmailUser: !!settings.emailUser,
+        hasEmailPassword: !!settings.emailPassword,
+        hasPaymentTemplate: !!settings.paymentConfirmationEmailTemplate
+      });
+      
+      if (settings.emailUser && settings.emailPassword && settings.paymentConfirmationEmailTemplate) {
+        const emailData = {
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          address: user.address,
+          seatNumber: user.seatNumber,
+          slot: user.slot,
+          paidDate: new Date().toLocaleDateString(),
+          nextDueDate: calculation.nextDueDate.toLocaleDateString(),
+          amount: `₹${calculation.amount}`
+        };
+
+        console.log('Sending payment confirmation email to:', user.email);
+        try {
+          await emailService.sendPaymentConfirmation(
+            user.email,
+            emailData,
+            settings.paymentConfirmationEmailTemplate
+          );
+          console.log('Payment confirmation email sent successfully');
+        } catch (error) {
+          console.error('Error sending payment confirmation email:', error);
+        }
+      } else {
+        console.log('Payment confirmation email not sent - missing required settings');
+      }
+
+      // Send Telegram notification
+      await telegramService.sendPaymentReceivedNotification({
+        ...user,
+        amount: calculation.amount,
+        nextDueDate: calculation.nextDueDate
+      });
+
+      res.json({ 
+        success: true, 
+        user: updatedUser, 
+        calculation,
+        message: "Payment marked successfully" 
+      });
+
+    } catch (error) {
+      console.error('Error marking payment:', error);
+      res.status(500).json({ 
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to mark payment" 
+      });
+    }
+  });
+
+  // Upload ID document to Cloudinary
+  app.post("/api/upload/id-document", upload.single('idDocument'), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No file uploaded"
+        });
+      }
+
+      // Check if Cloudinary is configured
+      const cloudinaryStatus = cloudinaryService.getStatus();
+      if (!cloudinaryStatus.configured) {
+        return res.status(500).json({
+          success: false,
+          message: "File storage not configured"
+        });
+      }
+
+      // Upload to Cloudinary
+      const result = await cloudinaryService.uploadImage(req.file.buffer, {
+        folder: 'vidhyadham/id-documents',
+        transformation: [
+          { width: 1000, height: 1000, crop: "limit" },
+          { quality: "auto:good" }
+        ]
+      });
+
+      console.log('ID document uploaded successfully:', result.secure_url);
+
+      res.json({
+        success: true,
+        url: result.secure_url,
+        publicId: result.public_id,
+        message: "ID document uploaded successfully"
+      });
+
+    } catch (error) {
+      console.error('ID document upload error:', error);
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Upload failed"
+      });
+    }
+  });
+
   // Cloudinary status
   app.get("/api/cloudinary/status", async (req: Request, res: Response) => {
     try {
       const status = cloudinaryService.getStatus();
-      res.json(status);
+      const envVars = {
+        hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+        hasApiKey: !!process.env.CLOUDINARY_API_KEY,
+        hasApiSecret: !!process.env.CLOUDINARY_API_SECRET
+      };
+      
+      res.json({
+        ...status,
+        environment: envVars,
+        message: status.configured ? 'Cloudinary is ready for uploads' : 'Cloudinary not configured - check environment variables'
+      });
     } catch (error) {
       console.error('Cloudinary status error:', error);
       res.status(500).json({ 
         configured: false,
-        error: "Failed to get Cloudinary status"
+        error: "Failed to get Cloudinary status",
+        environment: {
+          hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+          hasApiKey: !!process.env.CLOUDINARY_API_KEY,
+          hasApiSecret: !!process.env.CLOUDINARY_API_SECRET
+        }
+      });
+    }
+  });
+
+  // Manual trigger for testing scheduler (for development/testing only)
+  app.post("/api/test/scheduler", async (req: Request, res: Response) => {
+    try {
+      console.log('🔧 [TEST] Manual scheduler trigger requested');
+      await dueDateScheduler.triggerDueDateCheck();
+      
+      res.json({
+        success: true,
+        message: "Due date check triggered manually. Check console logs for details.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('❌ [TEST] Manual scheduler trigger failed:', error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to trigger scheduler",
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });

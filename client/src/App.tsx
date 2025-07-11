@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ToastProvider } from './components/ui/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './components/auth/LoginPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/dashboard/Dashboard';
@@ -46,11 +47,13 @@ function AppContent() {
 
 function App() {
   return (
-    <AppProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 

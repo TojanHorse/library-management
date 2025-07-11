@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import MongoStore from "connect-mongo";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { dueDateScheduler } from "./scheduler";
@@ -7,9 +9,46 @@ import { emailService, EmailService } from "./email-service";
 import { database } from "./database";
 import { cloudinaryService } from "./cloudinary";
 
+// Global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  // In production, you might want to log this to a service and potentially restart
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // In production, you should log this and then gracefully shut down
+  process.exit(1);
+});
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'vidhya-dham-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/vidhya-dham',
+    touchAfter: 24 * 3600 // lazy session update
+  }),
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax' // CSRF protection
+  }
+}));
+
+// Extend session interface
+declare module 'express-session' {
+  interface SessionData {
+    adminId?: string;
+    username?: string;
+  }
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -64,8 +103,15 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    // Log error for debugging
+    console.error('Global error handler:', err);
+    
+    // Send error response if not already sent
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+    
+    // Don't re-throw the error - this was causing process crashes
   });
 
   // importantly only setup vite in development and after
@@ -77,10 +123,9 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
+  // Use environment port or default to 5000
+  // Render provides PORT environment variable
+  const port = process.env.PORT || 5000;
   server.listen(port, () => {
     log(`serving on port ${port}`);
     
@@ -99,6 +144,23 @@ app.use((req, res, next) => {
     
     // Start the due date reminder scheduler
     dueDateScheduler.start();
+    
+    // Render.com keepalive - prevent service from sleeping
+    if (process.env.NODE_ENV === 'production') {
+      const KEEPALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+      setInterval(async () => {
+        try {
+          // Self ping to keep the service alive
+          const response = await fetch(`http://localhost:${port}/api/health`);
+          if (response.ok) {
+            log('Keepalive ping successful');
+          }
+        } catch (error) {
+          log('Keepalive ping failed:', error);
+        }
+      }, KEEPALIVE_INTERVAL);
+      log('Render keepalive mechanism started (14-minute intervals)');
+    }
   });
 
   // Graceful shutdown

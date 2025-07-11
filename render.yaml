@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: vidhyadham-library
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        fromDatabase:
+          name: vidhyadham-db
+          property: connectionString
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+    
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+
+databases:
+  - name: vidhyadham-db
+    databaseName: vidhyadham
+    user: vidhyadham_user
+    plan: free
+    region: singapore
+
+# Environment variables that need to be set manually in Render dashboard:
+# CLOUDINARY_CLOUD_NAME - Your Cloudinary cloud name
+# CLOUDINARY_API_KEY - Your Cloudinary API key
+# CLOUDINARY_API_SECRET - Your Cloudinary API secret

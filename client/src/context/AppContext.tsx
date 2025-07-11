@@ -200,6 +200,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.isAuthenticated]);
 
+  // Lighter refresh for real-time updates - only refresh users every 60 seconds
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      const interval = setInterval(async () => {
+        try {
+          // Only refresh users for lighter load
+          const users = await apiService.getUsers();
+          const normalizedUsers = users.map(normalizeUser);
+          dispatch({ type: 'SET_USERS', payload: normalizedUsers });
+        } catch (error) {
+          console.error('Failed to auto-refresh users:', error);
+        }
+      }, 60000); // 60 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [state.isAuthenticated]);
+
   const value: AppContextType = {
     state,
     dispatch,

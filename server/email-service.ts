@@ -27,6 +27,7 @@ export class EmailService {
   private transporter: Transporter | null = null;
   private fromEmail: string = '';
   private config: SMTPConfig | null = null;
+  private sendGridApiKey: string | null = null;
 
   configure(smtpConfig: SMTPConfig, fromEmail: string) {
     console.log('Configuring email service with SMTP:', {
@@ -39,6 +40,7 @@ export class EmailService {
 
     this.config = smtpConfig;
     this.fromEmail = fromEmail;
+    this.sendGridApiKey = null; // Clear SendGrid config when using SMTP
 
     this.transporter = nodemailer.createTransport({
       host: smtpConfig.host,
@@ -51,6 +53,27 @@ export class EmailService {
       tls: {
         rejectUnauthorized: false
       }
+    });
+  }
+
+  configureSendGrid(apiKey: string, fromEmail: string) {
+    console.log('Configuring email service with SendGrid:', {
+      hasApiKey: !!apiKey,
+      fromEmail
+    });
+
+    this.sendGridApiKey = apiKey;
+    this.fromEmail = fromEmail;
+    this.config = null; // Clear SMTP config when using SendGrid
+
+    this.transporter = nodemailer.createTransporter({
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false,
+      auth: {
+        user: 'apikey',
+        pass: apiKey,
+      },
     });
   }
 
@@ -135,6 +158,40 @@ export class EmailService {
       return {success: true};
     } catch (error) {
       console.error('Failed to send due date reminder:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async sendPaymentConfirmation(
+    userEmail: string,
+    templateData: EmailTemplateData & { paidDate?: string; nextDueDate?: string; amount?: string },
+    template: string
+  ): Promise<{success: boolean; error?: string}> {
+    try {
+      if (!this.transporter) {
+        throw new Error('Email service not configured');
+      }
+
+      const emailContent = this.replaceTemplateVariables(template, templateData);
+
+      const mailOptions = {
+        from: this.fromEmail,
+        to: userEmail,
+        subject: 'VidhyaDham - Payment Confirmation',
+        text: emailContent,
+        html: emailContent,
+      };
+
+      console.log('Sending payment confirmation to:', userEmail);
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('Payment confirmation sent:', info.messageId);
+      
+      return {success: true};
+    } catch (error) {
+      console.error('Failed to send payment confirmation:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

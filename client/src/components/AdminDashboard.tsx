@@ -32,43 +32,71 @@ export function AdminDashboard() {
   });
 
   const handleMarkPaid = async (userId: string) => {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
+    try {
+      // Call the backend endpoint that handles payment confirmation and emails
+      const response = await fetch(`/api/users/${userId}/mark-paid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-    const updatedUser = {
-      ...user,
-      feeStatus: 'paid' as const,
-      logs: [...user.logs, {
-        id: Date.now().toString(),
-        action: 'Fee marked as paid',
-        timestamp: new Date().toISOString(),
-        adminId: state.currentAdmin || 'admin'
-      }]
-    };
+      const result = await response.json();
+      
+      if (result.success) {
+        const user = state.users.find(u => u.id === userId);
+        if (user) {
+          const updatedUser = {
+            ...user,
+            feeStatus: 'paid' as const,
+            logs: [...user.logs, {
+              id: Date.now().toString(),
+              action: 'Fee marked as paid',
+              timestamp: new Date().toISOString(),
+              adminId: state.currentAdmin || 'admin'
+            }]
+          };
 
-    dispatch({ type: 'UPDATE_USER', payload: updatedUser });
-    
-    // Update seat status
-    const seat = state.seats.find(s => s.number === user.seatNumber);
-    if (seat) {
-      dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'paid' } });
+          dispatch({ type: 'UPDATE_USER', payload: updatedUser });
+          
+          // Update seat status
+          const seat = state.seats.find(s => s.number === user.seatNumber);
+          if (seat) {
+            dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'paid' } });
+          }
+        }
+        
+        toast?.success('Payment marked as paid!', 'Confirmation email sent successfully');
+      } else {
+        toast?.error('Failed to mark as paid', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to mark as paid:', error);
+      toast?.error('Failed to mark as paid', 'Network error occurred');
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
     const confirmed = await confirm('Are you sure you want to delete this user?', 'This action cannot be undone.');
     if (confirmed) {
-      const user = state.users.find(u => u.id === userId);
-      if (user) {
-        // Free up the seat
-        const seat = state.seats.find(s => s.number === user.seatNumber);
-        if (seat) {
-          dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'available', userId: undefined } });
+      try {
+        const user = state.users.find(u => u.id === userId);
+        await apiService.deleteUser(userId);
+        
+        if (user) {
+          // Free up the seat
+          const seat = state.seats.find(s => s.number === user.seatNumber);
+          if (seat) {
+            dispatch({ type: 'UPDATE_SEAT', payload: { ...seat, status: 'available', userId: undefined } });
+          }
         }
+        
+        dispatch({ type: 'DELETE_USER', payload: userId });
+        toast.success('User deleted successfully');
+      } catch (error) {
+        console.error('Failed to delete user:', error);
+        toast.error('Failed to delete user');
       }
-      
-      dispatch({ type: 'DELETE_USER', payload: userId });
-      toast.success('User deleted successfully');
     }
   };
 
@@ -78,9 +106,16 @@ export function AdminDashboard() {
   };
 
   const handleSaveEdit = async (updatedUser: User) => {
-    dispatch({ type: 'UPDATE_USER', payload: updatedUser });
-    setShowEditModal(false);
-    setSelectedUser(null);
+    try {
+      const result = await apiService.updateUser(updatedUser);
+      dispatch({ type: 'UPDATE_USER', payload: result });
+      setShowEditModal(false);
+      setSelectedUser(null);
+      toast.success('User updated successfully');
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      toast.error('Failed to update user');
+    }
   };
 
   const handleDownloadCsv = async () => {
@@ -323,18 +358,57 @@ function EditUserForm({ user, onSave, onCancel }: {
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState(user);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('idDocument', file);
+
+      const response = await fetch('/api/upload/id-document', {
+        method: 'POST',
+        body: formDataUpload
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setFormData(prev => ({ ...prev, idUpload: result.url }));
+        toast?.success('ID document uploaded successfully');
+      } else {
+        toast?.error('Failed to upload ID document', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to upload ID document:', error);
+      toast?.error('Failed to upload ID document', 'Network error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      ...formData,
-      logs: [...formData.logs, {
-        id: Date.now().toString(),
-        action: 'User details updated',
-        timestamp: new Date().toISOString(),
-        adminId: 'admin'
-      }]
-    });
+    setSaving(true);
+    try {
+      const updatedUser = {
+        ...formData,
+        logs: [...formData.logs, {
+          id: Date.now().toString(),
+          action: 'User details updated',
+          timestamp: new Date().toISOString(),
+          adminId: 'admin'
+        }]
+      };
+      onSave(updatedUser);
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      toast?.error('Failed to update user', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -361,24 +435,86 @@ function EditUserForm({ user, onSave, onCancel }: {
         label="Seat Number"
         type="number"
         value={formData.seatNumber}
-        onChange={(e) => setFormData(prev => ({ ...prev, seatNumber: parseInt(e.target.value) }))}
+        onChange={(e) => {
+          const value = parseInt(e.target.value);
+          if (!isNaN(value) && value > 0) {
+            setFormData(prev => ({ ...prev, seatNumber: value }));
+          }
+        }}
         required
+        min="1"
+        max="114"
       />
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Slot</label>
         <select
           value={formData.slot}
-          onChange={(e) => setFormData(prev => ({ ...prev, slot: e.target.value }))}
+          onChange={(e) => setFormData(prev => ({ ...prev, slot: e.target.value as 'Morning' | 'Afternoon' | 'Evening' | '12Hour' | '24Hour' }))}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="Morning">Morning</option>
-          <option value="Afternoon">Afternoon</option>
-          <option value="Evening">Evening</option>
+          <option value="Morning">Morning Slot</option>
+          <option value="Afternoon">Afternoon Slot</option>
+          <option value="Evening">Evening Slot</option>
+          <option value="12Hour">12 Hour Slot</option>
+          <option value="24Hour">24 Hour Slot</option>
         </select>
       </div>
+      
+      {/* ID Document Upload */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ID Document
+        </label>
+        <div className="space-y-3">
+          {formData.idUpload && (
+            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center">
+                <div className="text-green-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="ml-2 text-sm text-green-700">ID document uploaded</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(formData.idUpload, '_blank')}
+                >
+                  View
+                </Button>
+              </div>
+            </div>
+          )}
+          <div>
+            <input
+              type="file"
+              accept="image/*,.pdf,.doc,.docx"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleFileUpload(file);
+                }
+              }}
+              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              disabled={uploading}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Upload an image, PDF, or document file (max 5MB)
+            </p>
+          </div>
+        </div>
+      </div>
+      
       <div className="flex space-x-2">
-        <Button type="submit">Save Changes</Button>
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={saving || uploading}>
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={saving || uploading}>
+          Cancel
+        </Button>
       </div>
     </form>
   );

@@ -4,14 +4,29 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
-import { Edit, Trash2, Eye, Filter, Download, Search, Mail } from 'lucide-react';
+import { Edit, Trash2, Eye, Filter, Download, Search, Mail, FileText, ExternalLink, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
 import { useToast } from '../ui/Toast';
 
 export function UserManagement() {
-  const { state, updateUser, deleteUser, dispatch } = useApp();
+  const { state, updateUser, deleteUser, dispatch, loadData } = useApp();
   const { toast, confirm } = useToast();
+
+  // Function to fetch users with error handling
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch users: ${response.status} ${response.statusText}`);
+      }
+      const users = await response.json();
+      dispatch({ type: 'SET_USERS', payload: users });
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      toast.error('Failed to fetch users', error instanceof Error ? error.message : 'Network error');
+    }
+  };
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
@@ -36,23 +51,29 @@ export function UserManagement() {
   const handleMarkPaid = async (userId: string) => {
     setLoading(true);
     try {
-      const user = state.users.find(u => (u._id || u.id) === userId);
-      if (!user) return;
+      console.log('Marking as paid for user ID:', userId);
+      
+      // Call the backend endpoint that handles payment confirmation and emails
+      const response = await fetch(`/api/users/${userId}/mark-paid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      const updatedUser = {
-        ...user,
-        feeStatus: 'paid' as const,
-        logs: [...user.logs, {
-          id: Date.now().toString(),
-          action: 'Fee marked as paid',
-          timestamp: new Date().toISOString(),
-          adminId: state.currentAdmin || 'admin'
-        }]
-      };
-
-      await updateUser(updatedUser);
+      const result = await response.json();
+      console.log('Mark as paid response:', result);
+      
+      if (result.success) {
+        // Refresh users list to get updated data
+        await fetchUsers();
+        toast?.success('Payment marked as paid!', 'Confirmation email sent successfully');
+      } else {
+        toast?.error('Failed to mark as paid', result.message);
+      }
     } catch (error) {
       console.error('Failed to mark as paid:', error);
+      toast?.error('Failed to mark as paid', 'Network error occurred');
     } finally {
       setLoading(false);
     }
@@ -64,6 +85,8 @@ export function UserManagement() {
       try {
         setLoading(true);
         await deleteUser(userId);
+        // Refresh users list to show updated data
+        await fetchUsers();
         toast.success('User deleted successfully');
       } catch (error) {
         console.error('Failed to delete user:', error);
@@ -71,6 +94,50 @@ export function UserManagement() {
       } finally {
         setLoading(false);
       }
+    }
+  };
+
+  const handleViewIdDocument = (idUpload: string) => {
+    if (!idUpload) {
+      toast.error('No ID document available for this user');
+      return;
+    }
+    // Open the Cloudinary URL in a new tab for preview
+    window.open(idUpload, '_blank');
+  };
+
+  const handleDownloadIdDocument = async (idUpload: string, userName: string) => {
+    if (!idUpload) {
+      toast.error('No ID document available for this user');
+      return;
+    }
+
+    try {
+      // Fetch the image
+      const response = await fetch(idUpload);
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract file extension from Cloudinary URL or default to jpg
+      const urlParts = idUpload.split('.');
+      const extension = urlParts[urlParts.length - 1].split('?')[0] || 'jpg';
+      
+      link.download = `${userName.replace(/\s+/g, '_')}_ID_Document.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('ID document downloaded successfully');
+    } catch (error) {
+      console.error('Failed to download ID document:', error);
+      toast.error('Failed to download ID document');
     }
   };
 
@@ -89,8 +156,8 @@ export function UserManagement() {
       
       if (data.success) {
         toast.success('Due date reminder sent successfully!');
-        // Reload data to get updated logs from server
-        window.location.reload();
+        // Refresh users list to get updated data
+        await fetchUsers();
       } else {
         toast.error(`Failed to send reminder: ${data.message}`);
       }
@@ -168,6 +235,18 @@ export function UserManagement() {
                   <Filter className="h-4 w-4 mr-2" />
                   Clear
                 </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setLoading(true);
+                    loadData().finally(() => setLoading(false));
+                  }}
+                  disabled={loading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
                 <Button variant="outline" size="sm">
                   <Download className="h-4 w-4 mr-2" />
                   Export
@@ -224,7 +303,7 @@ export function UserManagement() {
                         {getStatusBadge(user.feeStatus)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-1 items-center">
                           <Button
                             size="sm"
                             variant="ghost"
@@ -236,24 +315,45 @@ export function UserManagement() {
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedUser(user);
-                              setShowLogsModal(true);
-                            }}
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                          setSelectedUser(user);
+                          setShowLogsModal(true);
+                          }}
                           >
-                            <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4" />
                           </Button>
+                           {user.idUpload && (
+                             <>
+                               <Button
+                                 size="sm"
+                                 variant="ghost"
+                                 onClick={() => handleViewIdDocument(user.idUpload)}
+                                 title="View ID Document"
+                               >
+                                 <FileText className="h-4 w-4" />
+                               </Button>
+                               <Button
+                                 size="sm"
+                                 variant="ghost"
+                                 onClick={() => handleDownloadIdDocument(user.idUpload, user.name)}
+                                 title="Download ID Document"
+                               >
+                                 <Download className="h-4 w-4" />
+                               </Button>
+                             </>
+                           )}
                           {user.feeStatus !== 'paid' && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleMarkPaid(user._id || user.id || '')}
-                              disabled={loading}
-                            >
-                              {loading ? 'Processing...' : 'Mark Paid'}
+                          <Button
+                          size="sm"
+                          onClick={() => handleMarkPaid(user._id || user.id || '')}
+                          disabled={loading}
+                            className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
+                          >
+                            {loading ? 'Processing...' : 'Mark Paid'}
                             </Button>
-                          )}
+                           )}
                           {(user.feeStatus === 'due' || user.feeStatus === 'expired') && (
                             <Button
                               size="sm"
@@ -312,16 +412,36 @@ export function UserManagement() {
                         Edit
                       </Button>
                       <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setShowLogsModal(true);
-                        }}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                      setSelectedUser(user);
+                      setShowLogsModal(true);
+                      }}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Logs
+                      <Eye className="h-4 w-4 mr-1" />
+                      Logs
                       </Button>
+                       {user.idUpload && (
+                         <>
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => handleViewIdDocument(user.idUpload)}
+                           >
+                             <FileText className="h-4 w-4 mr-1" />
+                             View ID
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => handleDownloadIdDocument(user.idUpload, user.name)}
+                           >
+                             <Download className="h-4 w-4 mr-1" />
+                             Download ID
+                           </Button>
+                         </>
+                       )}
                       {user.feeStatus !== 'paid' && (
                         <Button
                         size="sm"
@@ -382,6 +502,8 @@ export function UserManagement() {
               onSave={(updatedUser) => {
                 dispatch({ type: 'UPDATE_USER', payload: updatedUser });
                 setShowEditModal(false);
+                // Refresh users list to show updated data
+                fetchUsers();
               }}
               onCancel={() => setShowEditModal(false)}
             />
@@ -426,13 +548,51 @@ function EditUserForm({ user, onSave, onCancel }: {
 }) {
   const [formData, setFormData] = useState(user);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const { updateUser } = useApp();
+  const { toast } = useToast();
+
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('idDocument', file);
+
+      const response = await fetch('/api/upload/id-document', {
+        method: 'POST',
+        body: formDataUpload
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setFormData(prev => ({ 
+          ...prev, 
+          idUpload: result.url,
+          logs: [...prev.logs, {
+            id: Date.now().toString(),
+            action: 'ID document uploaded',
+            timestamp: new Date().toISOString(),
+            adminId: 'admin'
+          }]
+        }));
+        toast?.success('ID document uploaded successfully - don\'t forget to save changes');
+      } else {
+        toast?.error('Failed to upload ID document', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to upload ID document:', error);
+      toast?.error('Failed to upload ID document', 'Network error');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-      onSave({
+      const updatedUser = await updateUser({
         ...formData,
         logs: [...formData.logs, {
           id: Date.now().toString(),
@@ -441,6 +601,11 @@ function EditUserForm({ user, onSave, onCancel }: {
           adminId: 'admin'
         }]
       });
+      onSave(updatedUser);
+      toast?.success('User updated successfully');
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      toast?.error('Failed to update user', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
@@ -470,8 +635,15 @@ function EditUserForm({ user, onSave, onCancel }: {
         label="Seat Number"
         type="number"
         value={formData.seatNumber}
-        onChange={(e) => setFormData(prev => ({ ...prev, seatNumber: parseInt(e.target.value) }))}
+        onChange={(e) => {
+          const value = parseInt(e.target.value);
+          if (!isNaN(value) && value > 0) {
+            setFormData(prev => ({ ...prev, seatNumber: value }));
+          }
+        }}
         required
+        min="1"
+        max="114"
       />
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slot</label>
@@ -487,11 +659,60 @@ function EditUserForm({ user, onSave, onCancel }: {
           <option value="24Hour">24 Hour Slot</option>
         </select>
       </div>
+      
+      {/* ID Document Upload */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          ID Document
+        </label>
+        <div className="space-y-3">
+          {formData.idUpload && (
+            <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <div className="flex items-center">
+                <div className="text-green-600 dark:text-green-400">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="ml-2 text-sm text-green-700 dark:text-green-300">ID document uploaded</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(formData.idUpload, '_blank')}
+                >
+                  View
+                </Button>
+              </div>
+            </div>
+          )}
+          <div>
+            <input
+              type="file"
+              accept="image/*,.pdf,.doc,.docx"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleFileUpload(file);
+                }
+              }}
+              className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400"
+              disabled={uploading}
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Upload an image, PDF, or document file (max 5MB)
+            </p>
+          </div>
+        </div>
+      </div>
+      
       <div className="flex flex-col sm:flex-row gap-2 pt-4">
-        <Button type="submit" className="flex-1" disabled={saving}>
+        <Button type="submit" className="flex-1" disabled={saving || uploading}>
           {saving ? 'Saving...' : 'Save Changes'}
         </Button>
-        <Button type="button" variant="outline" onClick={onCancel} className="flex-1" disabled={saving}>
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1" disabled={saving || uploading}>
           Cancel
         </Button>
       </div>
