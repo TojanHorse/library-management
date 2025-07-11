@@ -359,7 +359,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User routes
   app.get("/api/users", async (req: Request, res: Response) => {
     try {
-      const users = await mongoStorage.getAllUsers();
+      const { status } = req.query;
+      let users;
+      
+      if (status === 'active') {
+        users = await mongoStorage.getActiveUsers();
+      } else if (status === 'left') {
+        users = await mongoStorage.getLeftUsers();
+      } else {
+        users = await mongoStorage.getAllUsers();
+      }
       
       // Include user logs for each user
       const usersWithLogs = await Promise.all(
@@ -668,6 +677,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ ...user, logs });
     } catch (error) {
       console.error('Error marking user as left:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Reactivate user who has left
+  app.put("/api/users/:id/reactivate", async (req: Request, res: Response) => {
+    try {
+      const userId = req.params.id;
+      const { seatNumber } = req.body;
+      
+      if (!seatNumber) {
+        return res.status(400).json({ message: "Seat number is required for reactivation" });
+      }
+      
+      // Get original user data first
+      const originalUser = await mongoStorage.getUser(userId);
+      if (!originalUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      if (originalUser.status === 'active') {
+        return res.status(400).json({ message: "User is already active" });
+      }
+      
+      // Check if the requested seat is available
+      const requestedSeat = await mongoStorage.getSeat(seatNumber);
+      if (!requestedSeat) {
+        return res.status(404).json({ message: "Seat not found" });
+      }
+      
+      if (requestedSeat.status !== 'available') {
+        return res.status(400).json({ message: "Seat is not available" });
+      }
+      
+      // Reactivate the user
+      const user = await mongoStorage.reactivateUser(userId, seatNumber);
+      if (!user) {
+        return res.status(404).json({ message: "Failed to reactivate user" });
+      }
+      
+      // Assign the seat to the user
+      await mongoStorage.updateSeat(seatNumber, {
+        status: 'due',
+        userId: user._id ? user._id.toString() : ''
+      });
+      
+      // Log the reactivation
+      await mongoStorage.createUserLog({
+        userId: user._id ? user._id.toString() : '',
+        action: `User reactivated and assigned seat ${seatNumber}. Registration date reset to ${new Date().toLocaleDateString()}`,
+        adminId: req.body.adminId
+      });
+      
+      // Send Telegram notification
+      try {
+        await telegramService.sendNotification(
+          `🔄 User Reactivated\n\nName: ${user.name}\nEmail: ${user.email}\nNew Seat: ${seatNumber}\nSlot: ${user.slot}\nReactivated on: ${new Date().toLocaleDateString()}\n\nFee Status: Due (30 days from today)`,
+          'newUser'
+        );
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification for user reactivation:', telegramError);
+      }
+      
+      // Send welcome back email
+      try {
+        const settings = await mongoStorage.getSettings();
+        if (settings?.emailUser && settings?.emailPassword) {
+          const welcomeBackTemplate = `Dear ${user.name},
+
+Welcome back to VidhyaDham! We're delighted to have you rejoin our learning community.
+
+Your Membership Details:
+- Name: ${user.name}
+- Email: ${user.email}
+- Phone: ${user.phone}
+- New Seat Number: ${seatNumber}
+- Time Slot: ${user.slot}
+- Reactivation Date: ${new Date().toLocaleDateString()}
+- Fee Due Date: ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()} (30 days from today)
+
+Your previous membership has been reactivated and your fee cycle has been reset from today's date.
+
+Thank you for choosing VidhyaDham again for your studies.
+
+Best regards,
+Team VidhyaDham`;
+
+          await serviceManager.sendEmailWithFallback(
+            user.email,
+            'Welcome Back to VidhyaDham! 🎉',
+            welcomeBackTemplate
+          );
+        }
+      } catch (emailError) {
+        console.error('Failed to send welcome back email:', emailError);
+      }
+      
+      const logs = await mongoStorage.getUserLogs(user._id ? user._id.toString() : '');
+      res.json({ ...user, logs });
+    } catch (error) {
+      console.error('Error reactivating user:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

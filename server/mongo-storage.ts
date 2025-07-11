@@ -21,7 +21,9 @@ export interface IStorage {
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<IUser[]>;
   getActiveUsers(): Promise<IUser[]>;
+  getLeftUsers(): Promise<IUser[]>;
   markUserAsLeft(id: string): Promise<IUser | null>;
+  reactivateUser(id: string, newSeatNumber: number): Promise<IUser | null>;
   
   // Seat operations
   getSeat(number: number): Promise<ISeat | null>;
@@ -119,6 +121,16 @@ export class MongoStorage implements IStorage {
     }
   }
 
+  async getLeftUsers(): Promise<IUser[]> {
+    try {
+      const users = await User.find({ status: 'left' }).lean();
+      return users.map(user => ({ ...user, _id: user._id.toString() })) as IUser[];
+    } catch (error) {
+      console.error('Error getting left users:', error);
+      return [];
+    }
+  }
+
   async markUserAsLeft(id: string): Promise<IUser | null> {
     try {
       const user = await User.findByIdAndUpdate(
@@ -129,6 +141,26 @@ export class MongoStorage implements IStorage {
       return user ? { ...user, _id: user._id.toString() } as IUser : null;
     } catch (error) {
       console.error('Error marking user as left:', error);
+      return null;
+    }
+  }
+
+  async reactivateUser(id: string, newSeatNumber: number): Promise<IUser | null> {
+    try {
+      const user = await User.findByIdAndUpdate(
+        id, 
+        { 
+          status: 'active', 
+          leftDate: null,
+          seatNumber: newSeatNumber,
+          feeStatus: 'due',
+          registrationDate: new Date() // Reset registration date to current date
+        }, 
+        { new: true }
+      ).lean();
+      return user ? { ...user, _id: user._id.toString() } as IUser : null;
+    } catch (error) {
+      console.error('Error reactivating user:', error);
       return null;
     }
   }

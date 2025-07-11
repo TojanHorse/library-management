@@ -101,8 +101,9 @@ class ApiService {
     }
   }
 
-  async getUsers(): Promise<User[]> {
-    const response = await this.makeRequest(`${this.baseUrl}/users`);
+  async getUsers(status?: 'active' | 'left'): Promise<User[]> {
+    const url = status ? `${this.baseUrl}/users?status=${status}` : `${this.baseUrl}/users`;
+    const response = await this.makeRequest(url);
     return response.json();
   }
 
@@ -125,6 +126,14 @@ class ApiService {
   async markUserAsLeft(userId: string): Promise<User> {
     const response = await this.makeRequest(`${this.baseUrl}/users/${userId}/left`, {
       method: 'PUT',
+    });
+    return response.json();
+  }
+
+  async reactivateUser(userId: string, seatNumber: number): Promise<User> {
+    const response = await this.makeRequest(`${this.baseUrl}/users/${userId}/reactivate`, {
+      method: 'PUT',
+      body: JSON.stringify({ seatNumber }),
     });
     return response.json();
   }
