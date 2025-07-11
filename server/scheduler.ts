@@ -79,6 +79,13 @@ export class DueDateScheduler {
       this.lastCheckTime = new Date();
       console.log(`📅 [SCHEDULER] Enhanced fee management check... (${this.lastCheckTime.toLocaleString()})`);
       
+      // Check database connection before proceeding
+      const { database } = await import('./database');
+      if (!database.isConnectedToDatabase()) {
+        console.log('⚠️ [SCHEDULER] Database not connected, skipping fee check');
+        return;
+      }
+      
       const users = await mongoStorage.getActiveUsers();
       const settings = await mongoStorage.getSettings();
       

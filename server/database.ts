@@ -32,6 +32,9 @@ class DatabaseConnection {
         socketTimeoutMS: 45000,
         maxIdleTimeMS: 30000,
         connectTimeoutMS: 10000,
+        heartbeatFrequencyMS: 10000,
+        retryWrites: true,
+        retryReads: true,
       });
       
       this.isConnected = true;
@@ -56,12 +59,33 @@ class DatabaseConnection {
 
       // Initialize default data if needed
       await this.initializeDefaults();
+      
+      // Start connection monitor
+      this.startConnectionMonitor();
 
     } catch (error) {
       console.error('Database connection failed:', error);
       this.isConnected = false;
       throw error;
     }
+  }
+
+  private startConnectionMonitor(): void {
+    // Check connection every 30 seconds
+    setInterval(async () => {
+      try {
+        if (mongoose.connection.readyState !== 1) {
+          console.log('⚠️ [DATABASE] Connection state check: disconnected, attempting reconnect...');
+          this.isConnected = false;
+          await this.reconnect();
+        } else if (!this.isConnected) {
+          console.log('✅ [DATABASE] Connection restored');
+          this.isConnected = true;
+        }
+      } catch (error) {
+        console.error('❌ [DATABASE] Connection monitor error:', error);
+      }
+    }, 30000); // 30 seconds
   }
 
   private async reconnect(): Promise<void> {
@@ -80,6 +104,9 @@ class DatabaseConnection {
             socketTimeoutMS: 45000,
             maxIdleTimeMS: 30000,
             connectTimeoutMS: 10000,
+            heartbeatFrequencyMS: 10000,
+            retryWrites: true,
+            retryReads: true,
           });
         }
         
