@@ -1395,6 +1395,29 @@ Team VidhyaDham`;
     }
   });
 
+  // Test default Telegram bot
+  app.post("/api/test/telegram-default", async (req: Request, res: Response) => {
+    try {
+      const success = await telegramService.sendNotification(
+        '🧪 <b>DEFAULT BOT TEST</b>\n\nThis is a test message from the default VidhyaDham bot to verify it\'s working correctly!\n\n✅ If you receive this, the default bot is active and working.',
+        'newUser'
+      );
+
+      res.json({
+        success,
+        message: success 
+          ? 'Default Telegram bot test message sent successfully!' 
+          : 'Failed to send test message to default bot'
+      });
+    } catch (error) {
+      console.error('Default Telegram bot test error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Test failed: ' + (error instanceof Error ? error.message : 'Unknown error')
+      });
+    }
+  });
+
   // Debug Telegram configuration
   app.get("/api/telegram/debug", async (req: Request, res: Response) => {
     try {

@@ -107,12 +107,12 @@ export class DueDateScheduler {
         console.log('📧 [SCHEDULER] Email service not configured - skipping email notifications');
       }
 
-      // Check Telegram configuration
-      const telegramBots = settings?.telegramBots || [];
-      const hasActiveBots = telegramBots.some(bot => bot.enabled && bot.chatIds.length > 0) ||
-                           (settings?.telegramBotToken && settings?.telegramChatIds && settings?.telegramChatIds.length > 0);
+      // Check Telegram configuration (including default bot)
+      const { telegramService } = await import('./telegram-service');
+      const availableBots = await telegramService.getAllBots();
+      const hasActiveBots = availableBots && availableBots.length > 0;
       
-      console.log(`🤖 [SCHEDULER] Telegram bots configured: ${hasActiveBots ? 'Yes' : 'No'}`);
+      console.log(`🤖 [SCHEDULER] Telegram bots configured: ${hasActiveBots ? 'Yes' : 'No'} (${availableBots?.length || 0} bots available)`);
 
       // Configure email service if available
       let emailConfigured = false;

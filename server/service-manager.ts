@@ -57,11 +57,15 @@ export class ServiceManager {
 
     // Check Telegram Service
     try {
-      const settings = await mongoStorage.getSettings();
-      const hasActiveBots = settings?.telegramBots?.some(bot => bot.enabled && bot.chatIds.length > 0) ||
-                           (settings?.telegramBotToken && settings?.telegramChatIds?.length > 0);
-      if (hasActiveBots) {
+      const { telegramService } = await import('./telegram-service');
+      const availableBots = await telegramService.getAllBots();
+      
+      // Telegram is available if there are any bots (including the default one)
+      if (availableBots && availableBots.length > 0) {
         status.telegram = true;
+        console.log(`🤖 [SERVICE-MANAGER] Found ${availableBots.length} Telegram bot(s) available`);
+      } else {
+        console.log('🤖 [SERVICE-MANAGER] No Telegram bots found');
       }
     } catch (error) {
       console.warn('Telegram service configuration unavailable:', error);

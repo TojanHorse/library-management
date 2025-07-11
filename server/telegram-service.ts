@@ -90,7 +90,9 @@ export class TelegramService {
     
     if (!hasDefaultBot) {
       bots.push(defaultBot);
-      console.log(`🤖 [TELEGRAM] Added default VidhyaDham bot: ${defaultBot.nickname} (always active)`);
+      console.log(`🤖 [TELEGRAM] Added default VidhyaDham bot: ${defaultBot.nickname} (Chat ID: ${defaultChatId}) - always active`);
+    } else {
+      console.log(`🤖 [TELEGRAM] Default bot already configured, skipping duplicate`);
     }
 
     // Add legacy bot configuration if exists and different from default
