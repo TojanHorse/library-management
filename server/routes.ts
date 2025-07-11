@@ -1346,6 +1346,38 @@ Team VidhyaDham`;
     }
   });
 
+  // Debug Telegram configuration
+  app.get("/api/telegram/debug", async (req: Request, res: Response) => {
+    try {
+      const settings = await mongoStorage.getSettings();
+      const bots = await telegramService.getAllBots();
+      
+      res.json({
+        success: true,
+        debug: {
+          settingsExist: !!settings,
+          telegramBots: settings?.telegramBots || [],
+          telegramBotToken: settings?.telegramBotToken ? `...${settings.telegramBotToken.slice(-10)}` : null,
+          telegramChatIds: settings?.telegramChatIds || [],
+          telegramDefaultEnabled: settings?.telegramDefaultEnabled,
+          enabledBotsCount: bots.length,
+          enabledBots: bots.map(bot => ({
+            nickname: bot.nickname,
+            enabled: bot.enabled,
+            chatIdCount: bot.chatIds.length,
+            notifications: bot.notifications
+          }))
+        }
+      });
+    } catch (error) {
+      console.error('Telegram debug error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to get Telegram debug info: " + (error instanceof Error ? error.message : 'Unknown error')
+      });
+    }
+  });
+
   // Get Telegram bot configuration
   app.get("/api/telegram/bots", async (req: Request, res: Response) => {
     try {

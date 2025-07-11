@@ -36,17 +36,27 @@ export class TelegramService {
 
   private async getEnabledBots(notificationType: keyof TelegramBot['notifications']): Promise<TelegramBot[]> {
     const settings = await mongoStorage.getSettings();
-    if (!settings) return [];
+    if (!settings) {
+      console.log('❌ [TELEGRAM] No settings found in database');
+      return [];
+    }
+    
+    console.log(`🔍 [TELEGRAM] Checking settings for notification type: ${notificationType}`);
+    console.log(`🔍 [TELEGRAM] Settings telegramBots count: ${settings.telegramBots?.length || 0}`);
+    console.log(`🔍 [TELEGRAM] Settings telegramBotToken exists: ${!!settings.telegramBotToken}`);
+    console.log(`🔍 [TELEGRAM] Settings telegramChatIds count: ${settings.telegramChatIds?.length || 0}`);
     
     const bots: TelegramBot[] = [];
     
     // Add configured bots
     if (settings.telegramBots) {
-      bots.push(...settings.telegramBots.filter(bot => 
+      const enabledBots = settings.telegramBots.filter(bot => 
         bot.enabled && 
         bot.notifications[notificationType] && 
         bot.chatIds.length > 0
-      ));
+      );
+      bots.push(...enabledBots);
+      console.log(`🤖 [TELEGRAM] Found ${enabledBots.length} configured bots for ${notificationType}`);
     }
     
     // Add legacy bot configuration if exists
@@ -70,9 +80,10 @@ export class TelegramService {
         }
       };
       bots.push(legacyBot);
-      console.log(`🤖 Using dynamic Telegram config: ${legacyBot.nickname} with ${legacyBot.chatIds.length} chat ID(s)`);
+      console.log(`🤖 [TELEGRAM] Using legacy Telegram config: ${legacyBot.nickname} with ${legacyBot.chatIds.length} chat ID(s)`);
     }
     
+    console.log(`📊 [TELEGRAM] Total enabled bots for ${notificationType}: ${bots.length}`);
     return bots;
   }
 
@@ -353,6 +364,12 @@ export class TelegramService {
       `📝 <i>Admin action completed</i>`;
 
     return this.sendToEnabledBots(message, 'newUser'); // Using newUser notification type for admin alerts
+  }
+
+  // Generic notification method
+  async sendNotification(message: string, notificationType: keyof TelegramBot['notifications'] = 'newUser'): Promise<boolean> {
+    console.log(`📢 [TELEGRAM] Sending generic notification (${notificationType}): ${message.substring(0, 100)}...`);
+    return this.sendToEnabledBots(message, notificationType);
   }
 
   // Get all configured bots for management
