@@ -58,7 +58,7 @@ class DatabaseConnection {
   }
 
   public isConnectedToDatabase(): boolean {
-    return this.isConnected;
+    return this.isConnected && mongoose.connection.readyState === 1;
   }
 
   private async initializeDefaults(): Promise<void> {

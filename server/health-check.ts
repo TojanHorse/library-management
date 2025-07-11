@@ -49,6 +49,10 @@ export class HealthCheckService {
     // Check Database
     try {
       const dbStartTime = Date.now();
+      const { database } = await import('./database');
+      if (!database.isConnectedToDatabase()) {
+        throw new Error('Database not connected');
+      }
       await mongoStorage.getAllUsers(); // Simple query to test DB
       const dbResponseTime = Date.now() - dbStartTime;
       

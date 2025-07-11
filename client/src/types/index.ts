@@ -8,7 +8,9 @@ export interface User {
   seatNumber: number;
   slot: 'Morning' | 'Afternoon' | 'Evening' | '12Hour' | '24Hour';
   feeStatus: 'paid' | 'due' | 'expired';
+  status: 'active' | 'left';
   registrationDate: string;
+  leftDate?: string;
   idType?: string;
   idNumber?: string;
   idUpload?: string;

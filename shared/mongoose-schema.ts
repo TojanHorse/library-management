@@ -17,7 +17,9 @@ const userSchema = new mongoose.Schema({
   seatNumber: { type: Number, required: true },
   slot: { type: String, required: true },
   feeStatus: { type: String, enum: ['paid', 'due', 'expired'], default: 'due' },
+  status: { type: String, enum: ['active', 'left'], default: 'active' },
   registrationDate: { type: Date, default: Date.now },
+  leftDate: { type: Date, default: null },
   idType: { type: String, default: null },
   idNumber: { type: String, default: null },
   idUpload: { type: String, default: null } // Cloudinary URL
@@ -114,7 +116,9 @@ export interface IUser {
   seatNumber: number;
   slot: string;
   feeStatus: 'paid' | 'due' | 'expired';
+  status: 'active' | 'left';
   registrationDate: Date;
+  leftDate?: Date;
   idType?: string;
   idNumber?: string;
   idUpload?: string;

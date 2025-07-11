@@ -79,7 +79,7 @@ export class DueDateScheduler {
       this.lastCheckTime = new Date();
       console.log(`📅 [SCHEDULER] Enhanced fee management check... (${this.lastCheckTime.toLocaleString()})`);
       
-      const users = await mongoStorage.getAllUsers();
+      const users = await mongoStorage.getActiveUsers();
       const settings = await mongoStorage.getSettings();
       
       console.log(`👥 [SCHEDULER] Found ${users.length} total users to check`);

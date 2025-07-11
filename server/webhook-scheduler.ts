@@ -24,7 +24,7 @@ export class WebhookScheduler {
     try {
       console.log('🔄 Webhook scheduler: Executing scheduled tasks...');
       
-      const users = await mongoStorage.getAllUsers();
+      const users = await mongoStorage.getActiveUsers();
       const settings = await mongoStorage.getSettings();
 
       if (!settings?.emailUser || !settings?.emailPassword) {
@@ -139,7 +139,7 @@ export class WebhookScheduler {
   async getWebhookStatus() {
     try {
       const settings = await mongoStorage.getSettings();
-      const users = await mongoStorage.getAllUsers();
+      const users = await mongoStorage.getActiveUsers();
       
       return {
         timestamp: new Date().toISOString(),

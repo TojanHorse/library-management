@@ -122,6 +122,13 @@ class ApiService {
     });
   }
 
+  async markUserAsLeft(userId: string): Promise<User> {
+    const response = await this.makeRequest(`${this.baseUrl}/users/${userId}/left`, {
+      method: 'PUT',
+    });
+    return response.json();
+  }
+
   async getSeats(): Promise<Seat[]> {
     const response = await this.makeRequest(`${this.baseUrl}/seats`);
     return response.json();

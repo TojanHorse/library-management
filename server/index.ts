@@ -164,13 +164,40 @@ app.use((req, res, next) => {
     // Start health check monitoring
     healthCheckService.startHealthCheckInterval(60000); // Every minute
     
-    // Initialize service manager for graceful degradation
-    try {
-      await serviceManager.initialize();
-      log('✅ Service manager initialized successfully');
+    // Wait for database to be ready before initializing services
+    let dbReady = false;
+    let retryCount = 0;
+    const maxRetries = 10;
+    
+    while (!dbReady && retryCount < maxRetries) {
+      try {
+      if (database.isConnectedToDatabase()) {
+        dbReady = true;
+        log('✅ Database is ready for service initialization');
+        break;
+      }
+      retryCount++;
+      log(`⏳ Waiting for database connection... (${retryCount}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
-      log('⚠️ Service manager initialization warning:', error);
+      retryCount++;
+      log(`⚠️ Database connection check failed: ${error} (${retryCount}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
+  }
+  
+  if (!dbReady) {
+    log('❌ Database connection failed after maximum retries');
+    process.exit(1);
+  }
+
+  // Initialize service manager for graceful degradation
+  try {
+    await serviceManager.initialize();
+    log('✅ Service manager initialized successfully');
+  } catch (error) {
+    log('⚠️ Service manager initialization warning:', error);
+  }
     
     // Render.com keepalive - prevent service from sleeping
     if (process.env.NODE_ENV === 'production') {

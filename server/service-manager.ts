@@ -36,8 +36,11 @@ export class ServiceManager {
 
     // Check Database
     try {
-      await mongoStorage.getAllUsers();
-      status.database = true;
+      const { database } = await import('./database');
+      if (database.isConnectedToDatabase()) {
+        await mongoStorage.getAllUsers();
+        status.database = true;
+      }
     } catch (error) {
       console.warn('Database service unavailable:', error);
     }

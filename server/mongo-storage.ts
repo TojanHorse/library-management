@@ -20,6 +20,8 @@ export interface IStorage {
   updateUser(id: string, user: Partial<IUser>): Promise<IUser | null>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<IUser[]>;
+  getActiveUsers(): Promise<IUser[]>;
+  markUserAsLeft(id: string): Promise<IUser | null>;
   
   // Seat operations
   getSeat(number: number): Promise<ISeat | null>;
@@ -104,6 +106,30 @@ export class MongoStorage implements IStorage {
     } catch (error) {
       console.error('Error getting all users:', error);
       return [];
+    }
+  }
+
+  async getActiveUsers(): Promise<IUser[]> {
+    try {
+      const users = await User.find({ status: 'active' }).lean();
+      return users.map(user => ({ ...user, _id: user._id.toString() })) as IUser[];
+    } catch (error) {
+      console.error('Error getting active users:', error);
+      return [];
+    }
+  }
+
+  async markUserAsLeft(id: string): Promise<IUser | null> {
+    try {
+      const user = await User.findByIdAndUpdate(
+        id, 
+        { status: 'left', leftDate: new Date() }, 
+        { new: true }
+      ).lean();
+      return user ? { ...user, _id: user._id.toString() } as IUser : null;
+    } catch (error) {
+      console.error('Error marking user as left:', error);
+      return null;
     }
   }
 

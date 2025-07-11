@@ -619,6 +619,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Mark user as left
+  app.put("/api/users/:id/left", async (req: Request, res: Response) => {
+    try {
+      const userId = req.params.id;
+      
+      // Get original user data first
+      const originalUser = await mongoStorage.getUser(userId);
+      if (!originalUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      if (originalUser.status === 'left') {
+        return res.status(400).json({ message: "User is already marked as left" });
+      }
+      
+      // Mark user as left
+      const user = await mongoStorage.markUserAsLeft(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Free up the seat
+      await mongoStorage.updateSeat(originalUser.seatNumber, {
+        status: 'available',
+        userId: null
+      });
+      
+      // Log the action
+      await mongoStorage.createUserLog({
+        userId: user._id ? user._id.toString() : '',
+        action: `User marked as left, seat ${originalUser.seatNumber} freed`,
+        adminId: req.body.adminId
+      });
+      
+      // Send Telegram notification
+      try {
+        await telegramService.sendNotification(
+          `📤 User Left\n\nName: ${user.name}\nSeat: ${originalUser.seatNumber}\nSlot: ${user.slot}\nLeft on: ${new Date().toLocaleDateString()}`,
+          'newUser'
+        );
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification for user left:', telegramError);
+      }
+      
+      const logs = await mongoStorage.getUserLogs(user._id ? user._id.toString() : '');
+      res.json({ ...user, logs });
+    } catch (error) {
+      console.error('Error marking user as left:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   
   app.delete("/api/users/:id", async (req: Request, res: Response) => {
     try {
