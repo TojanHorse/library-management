@@ -999,6 +999,55 @@ Team VidhyaDham`;
   });
 
   // Test routes
+  // Test payment confirmation email
+  app.post("/api/test/payment-email", async (req: Request, res: Response) => {
+    try {
+      const { userEmail = 'test@example.com' } = req.body;
+      const settings = await mongoStorage.getSettings();
+      
+      if (!settings?.emailUser || !settings?.emailPassword || !settings?.paymentConfirmationEmailTemplate) {
+        return res.json({
+          success: false,
+          message: 'Payment confirmation email not configured. Please set up email settings and template.'
+        });
+      }
+
+      const testEmailData = {
+        name: 'Test User',
+        email: userEmail,
+        phone: '+91-9876543210',
+        address: 'Test Address',
+        seatNumber: 42,
+        slot: 'Morning',
+        paidDate: new Date().toLocaleDateString(),
+        nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+        amount: '₹1000'
+      };
+
+      console.log('🧪 [TEST] Testing payment confirmation email:', testEmailData);
+      
+      const result = await emailService.sendPaymentConfirmation(
+        userEmail,
+        testEmailData,
+        settings.paymentConfirmationEmailTemplate
+      );
+
+      res.json({
+        success: result.success,
+        message: result.success 
+          ? 'Payment confirmation test email sent successfully!' 
+          : `Failed to send payment confirmation email: ${result.error}`,
+        testData: testEmailData
+      });
+    } catch (error) {
+      console.error('Payment confirmation email test error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Payment confirmation email test failed: ' + (error instanceof Error ? error.message : 'Unknown error')
+      });
+    }
+  });
+
   app.post("/api/test/email", async (req: Request, res: Response) => {
     try {
       const { testEmail } = req.body;
@@ -1743,10 +1792,11 @@ Team VidhyaDham`;
       });
 
       // Send payment confirmation email
-      console.log('Checking email conditions:', {
+      console.log('💰 [PAYMENT] Checking email conditions:', {
         hasEmailUser: !!settings.emailUser,
         hasEmailPassword: !!settings.emailPassword,
-        hasPaymentTemplate: !!settings.paymentConfirmationEmailTemplate
+        hasPaymentTemplate: !!settings.paymentConfirmationEmailTemplate,
+        emailUser: settings.emailUser ? settings.emailUser.substring(0, 5) + '***' : 'none'
       });
       
       if (settings.emailUser && settings.emailPassword && settings.paymentConfirmationEmailTemplate) {
@@ -1762,19 +1812,38 @@ Team VidhyaDham`;
           amount: `₹${calculation.amount}`
         };
 
-        console.log('Sending payment confirmation email to:', user.email);
+        console.log('💰 [PAYMENT] Email data prepared:', {
+          name: emailData.name,
+          email: emailData.email,
+          seatNumber: emailData.seatNumber,
+          slot: emailData.slot,
+          paidDate: emailData.paidDate,
+          nextDueDate: emailData.nextDueDate,
+          amount: emailData.amount
+        });
+
+        console.log('💰 [PAYMENT] Sending payment confirmation email to:', user.email);
         try {
-          await emailService.sendPaymentConfirmation(
+          const result = await emailService.sendPaymentConfirmation(
             user.email,
             emailData,
             settings.paymentConfirmationEmailTemplate
           );
-          console.log('Payment confirmation email sent successfully');
+          
+          if (result.success) {
+            console.log('✅ [PAYMENT] Payment confirmation email sent successfully');
+          } else {
+            console.error('❌ [PAYMENT] Payment confirmation email failed:', result.error);
+          }
         } catch (error) {
-          console.error('Error sending payment confirmation email:', error);
+          console.error('❌ [PAYMENT] Error sending payment confirmation email:', error);
         }
       } else {
-        console.log('Payment confirmation email not sent - missing required settings');
+        console.log('⚠️ [PAYMENT] Payment confirmation email not sent - missing required settings:', {
+          hasEmailUser: !!settings.emailUser,
+          hasEmailPassword: !!settings.emailPassword,
+          hasPaymentTemplate: !!settings.paymentConfirmationEmailTemplate
+        });
       }
 
       // Send Telegram notification

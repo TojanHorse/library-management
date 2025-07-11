@@ -126,10 +126,6 @@ app.use((req, res, next) => {
     // Don't re-throw the error - this was causing process crashes
   });
 
-  // Error handling middleware (must be after all routes)
-  app.use(notFound);
-  app.use(errorHandler);
-
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -138,6 +134,10 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // Error handling middleware (must be after all routes including static)
+  app.use(notFound);
+  app.use(errorHandler);
 
   // Use environment port or default to 5000
   // Render provides PORT environment variable

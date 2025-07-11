@@ -200,6 +200,20 @@ class ApiService {
     }
   }
 
+  async testPaymentEmail(userEmail?: string): Promise<boolean> {
+    try {
+      const response = await this.makeRequest(`${this.baseUrl}/test/payment-email`, {
+        method: 'POST',
+        body: JSON.stringify({ userEmail: userEmail || 'test@example.com' }),
+      });
+      
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      return false;
+    }
+  }
+
   async testTelegram(): Promise<boolean> {
     try {
       const response = await this.makeRequest(`${this.baseUrl}/test/telegram`, {
